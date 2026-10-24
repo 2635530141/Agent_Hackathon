@@ -1,3 +1,4 @@
+from datetime import datetime
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Form, Request
@@ -5,6 +6,7 @@ from fastapi.responses import RedirectResponse
 
 from app import matching_core, schedule_core, store
 from app.format import pretty_range
+from app.omnara_client import OmnaraError, interpret_request
 from app.profile_core import PLACE_LABELS, public_profile
 from app.web import render
 
@@ -14,9 +16,13 @@ DEFAULT_START = "2026-10-29T18:00"
 DEFAULT_END = "2026-10-29T21:00"
 
 
-def _query(course_id: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool) -> str:
+def _query(
+    course_id: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool, sentence: str
+) -> str:
     return urlencode(
         {
+            "sentence": sentence,
+            "ready": "1",
             "course_id": course_id,
             "starts_at": starts_at,
             "ends_at": ends_at,
@@ -32,11 +38,52 @@ def _profile_courses() -> list[dict]:
     return [course for course in store.courses() if course["id"] in owned]
 
 
-def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool):
-    catalog = _profile_courses() or store.courses()
-    if course_id not in {course["id"] for course in catalog}:
-        course_id = catalog[0]["id"]
-    course = store.course_by_id(course_id) or catalog[0]
+def _clock(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _course_record(course_id: str) -> dict:
+    found = store.course_by_id(course_id)
+    if found:
+        return found
+    label = course_id.strip() or "Course"
+    return {"id": label, "code": label, "name": label}
+
+
+def _parsed(raw: dict, courses: list[dict]) -> dict:
+    by_id = {course["id"]: course for course in courses}
+    by_code = {}
+    for course in courses:
+        by_code[course["code"].lower()] = course
+        by_code[course["code"].lower().replace(" ", "")] = course
+    named = str(raw.get("course_id") or raw.get("course") or "").strip()
+    if not named:
+        raise ValueError("That sentence did not name a course.")
+    compact = named.lower().replace(" ", "")
+    course = by_id.get(named) or by_code.get(named.lower()) or by_code.get(compact)
+    place_type = str(raw.get("place_type") or "coffee")
+    if place_type not in PLACE_LABELS:
+        place_type = "coffee"
+    starts_at = _clock(str(raw.get("starts_at") or ""))
+    ends_at = _clock(str(raw.get("ends_at") or ""))
+    if starts_at is None or ends_at is None or ends_at <= starts_at:
+        raise ValueError("Omnara did not return a usable time.")
+    return {
+        "course_id": course["id"] if course else named,
+        "starts_at": starts_at.strftime("%Y-%m-%dT%H:%M"),
+        "ends_at": ends_at.strftime("%Y-%m-%dT%H:%M"),
+        "place_type": place_type,
+        "note": str(raw.get("note") or "")[:300],
+    }
+
+
+def _session_context(
+    course_id: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool, sentence: str
+):
+    course = _course_record(course_id)
     error = ""
     conflict = None
     try:
@@ -45,6 +92,10 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
         error = str(exc)
     proposal = None
     when = ""
+    try:
+        asked_when = pretty_range(starts_at, ends_at)
+    except ValueError:
+        asked_when = ""
     if conflict is None and not error:
         try:
             proposal = matching_core.build_proposal(course["code"], starts_at, ends_at, place_type, note, study_anyway)
@@ -53,7 +104,7 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
             error = str(exc)
     return {
         "course": course,
-        "courses": catalog,
+        "courses": store.courses(),
         "starts_at": starts_at,
         "ends_at": ends_at,
         "place_type": place_type,
@@ -74,23 +125,57 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
             place_type,
             note,
             False,
+            sentence,
         )
         if conflict and conflict.get("alternative_start")
         else "",
-        "anyway_href": "/session?" + _query(course["id"], starts_at, ends_at, place_type, note, True),
+        "anyway_href": "/session?" + _query(course["id"], starts_at, ends_at, place_type, note, True, sentence),
         "proposal": proposal,
         "when": when,
+        "asked_when": asked_when,
         "invites": store.latest_invitations(),
         "all_accepted": store.batch_all_accepted(),
         "declined_names": store.declined_names(),
         "calendar_written": store.calendar_event_written(),
-        "keep": _query(course["id"], starts_at, ends_at, place_type, note, study_anyway),
+        "sentence": sentence,
+        "ready": True,
+        "keep": _query(course["id"], starts_at, ends_at, place_type, note, study_anyway, sentence),
     }
+
+
+def _form_only(request: Request, sentence: str, error: str = "", notice: str = ""):
+    catalog = _profile_courses() or store.courses()
+    return render(
+        request,
+        "session.html",
+        nav="session",
+        sentence=sentence,
+        ready=False,
+        course=catalog[0],
+        courses=catalog,
+        starts_at="",
+        ends_at="",
+        place_type="coffee",
+        place_labels=PLACE_LABELS,
+        note="",
+        study_anyway=False,
+        error=error,
+        notice=notice,
+        conflict=None,
+        proposal=None,
+        when="",
+        invites=store.latest_invitations(),
+        all_accepted=store.batch_all_accepted(),
+        declined_names=store.declined_names(),
+        calendar_written=store.calendar_event_written(),
+    )
 
 
 @router.get("/session")
 def session_page(
     request: Request,
+    sentence: str = "",
+    ready: str = "0",
     course_id: str = "cs61a",
     starts_at: str = DEFAULT_START,
     ends_at: str = DEFAULT_END,
@@ -100,12 +185,35 @@ def session_page(
     notice: str = "",
     discarded: str = "0",
 ):
-    context = _session_context(course_id, starts_at, ends_at, place_type, note, study_anyway == "1")
+    if ready != "1":
+        return _form_only(request, sentence, notice=notice)
+    context = _session_context(course_id, starts_at, ends_at, place_type, note, study_anyway == "1", sentence)
     if discarded == "1":
         context["proposal"] = None
         context["conflict"] = None
         notice = notice or "Request discarded. Nothing was sent."
     return render(request, "session.html", nav="session", notice=notice, **context)
+
+
+@router.post("/session/interpret")
+def interpret(request: Request, sentence: str = Form("")):
+    text = sentence.strip()
+    if not text:
+        return _form_only(request, "", error="Write what you want to study.")
+    courses = _profile_courses() or store.courses()
+    try:
+        parsed = _parsed(interpret_request(text, courses), courses)
+    except (OmnaraError, ValueError) as exc:
+        return _form_only(request, text, error=str(exc))
+    return _redirect_session(
+        parsed["course_id"],
+        parsed["starts_at"],
+        parsed["ends_at"],
+        parsed["place_type"],
+        parsed["note"],
+        "0",
+        sentence=text,
+    )
 
 
 def _redirect_session(
@@ -116,8 +224,9 @@ def _redirect_session(
     note: str,
     study_anyway: str,
     notice: str = "",
+    sentence: str = "",
 ) -> RedirectResponse:
-    query = _query(course_id, starts_at, ends_at, place_type, note, study_anyway == "1")
+    query = _query(course_id, starts_at, ends_at, place_type, note, study_anyway == "1", sentence)
     if notice:
         query += "&notice=" + quote(notice)
     return RedirectResponse(f"/session?{query}", status_code=303)
@@ -132,9 +241,12 @@ def save_draft(
     note: str = Form(""),
     study_anyway: str = Form("0"),
     invite: str = Form(""),
+    sentence: str = Form(""),
 ):
     store.set_invite_text(invite)
-    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, "Draft saved.")
+    return _redirect_session(
+        course_id, starts_at, ends_at, place_type, note, study_anyway, "Draft saved.", sentence=sentence
+    )
 
 
 @router.post("/session/swap-person")
@@ -146,10 +258,11 @@ def swap_person(
     note: str = Form(""),
     study_anyway: str = Form("0"),
     invite: str = Form(""),
+    sentence: str = Form(""),
 ):
     store.set_invite_text(invite)
     store.cycle_person()
-    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway)
+    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, sentence=sentence)
 
 
 @router.post("/session/swap-place")
@@ -161,10 +274,11 @@ def swap_place(
     note: str = Form(""),
     study_anyway: str = Form("0"),
     invite: str = Form(""),
+    sentence: str = Form(""),
 ):
     store.set_invite_text(invite)
     store.cycle_place()
-    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway)
+    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, sentence=sentence)
 
 
 @router.post("/session/confirm")
@@ -176,9 +290,9 @@ def confirm_invite(
     note: str = Form(""),
     study_anyway: str = Form("0"),
     invite: str = Form(""),
+    sentence: str = Form(""),
 ):
-    catalog = _profile_courses() or store.courses()
-    course = next((item for item in catalog if item["id"] == course_id), catalog[0])
+    course = _course_record(course_id)
     try:
         conflict = schedule_core.own_conflict(starts_at, ends_at, study_anyway == "1")
     except ValueError:
@@ -191,7 +305,8 @@ def confirm_invite(
             place_type,
             note,
             study_anyway,
-            "Pick another time, or study anyway, before sending.",
+            "Pick a conflict-free time before sending.",
+            sentence=sentence,
         )
     store.set_invite_text(invite)
     try:
@@ -199,7 +314,9 @@ def confirm_invite(
             course["code"], starts_at, ends_at, place_type, note, study_anyway == "1"
         )
     except matching_core.NoMatch as exc:
-        return _redirect_session(course["id"], starts_at, ends_at, place_type, note, study_anyway, str(exc))
+        return _redirect_session(
+            course["id"], starts_at, ends_at, place_type, note, study_anyway, str(exc), sentence=sentence
+        )
     message = invite.strip() or proposal.invite
     store.create_invitations(
         [
@@ -225,6 +342,7 @@ def confirm_invite(
         note,
         study_anyway,
         "Invitation sent for this demo. Nothing is emailed until an email provider is connected.",
+        sentence=sentence,
     )
 
 
@@ -236,9 +354,12 @@ def add_to_calendar(
     place_type: str = Form("coffee"),
     note: str = Form(""),
     study_anyway: str = Form("1"),
+    sentence: str = Form(""),
 ):
     notice = "Calendar export is disabled. Authoritative session revision, acceptances and separate organizer approval are required. No calendar was written."
-    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, notice)
+    return _redirect_session(
+        course_id, starts_at, ends_at, place_type, note, study_anyway, notice, sentence=sentence
+    )
 
 
 @router.get("/invite")

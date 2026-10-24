@@ -7,3 +7,4 @@ tzdata>=2026.1
 httpx>=0.28,<1
 Authlib>=1.9,<2
 cryptography>=44
+itsdangerous>=2.2

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == "register" %}Create account{% else %}Sign in{% endif %} · StudyMate{% endblock %}
+{% block content %}
+<div class="hero">
+  <div class="stack-lg">
+    <div class="stack">
+      <p class="meta">For the course, the exam, and the empty Thursday</p>
+      <h1 class="title">Find a study mate. Approve the invite yourself.</h1>
+      <p class="lede">StudyMate looks for someone in your course who is free at the same time, suggests a place you can both reach, and sends nothing until you say so.</p>
+    </div>
+    <ol class="steps">
+      <li class="current">Course and time</li>
+      <li>A person and a place</li>
+      <li>They accept</li>
+    </ol>
+    <dl class="facts">
+      <dt>You choose</dt>
+      <dd>The course, the time, and the kind of place.</dd>
+      <dt>You approve</dt>
+      <dd>Swap the person or the place, then send.</dd>
+      <dt>They answer</dt>
+      <dd>Each student gets their own accept or decline link.</dd>
+    </dl>
+  </div>
+
+  <section class="card stack" aria-labelledby="auth-title">
+    <div class="cluster">
+      <a class="button {% if mode != 'register' %}primary{% else %}quiet{% endif %}" href="/login">Sign in</a>
+      <a class="button {% if mode == 'register' %}primary{% else %}quiet{% endif %}" href="/register">Create account</a>
+    </div>
+    {% if error %}
+    <div class="callout warn"><p>{{ error }}</p></div>
+    {% endif %}
+    {% if mode == "register" %}
+    <h2 id="auth-title" class="section-title">Create an account</h2>
+    <form class="stack" method="post" action="/register">
+      <label class="field">
+        <span class="label">Name</span>
+        <input name="name" autocomplete="name" required value="{{ full_name }}">
+      </label>
+      <label class="field">
+        <span class="label">Email</span>
+        <input name="email" type="email" autocomplete="email" required value="{{ email }}">
+      </label>
+      <label class="field">
+        <span class="label">Password</span>
+        <input name="password" type="password" autocomplete="new-password" required minlength="8">
+      </label>
+      <button class="button primary" type="submit">Create account</button>
+    </form>
+    {% else %}
+    <h2 id="auth-title" class="section-title">Sign in</h2>
+    <form class="stack" method="post" action="/login">
+      <label class="field">
+        <span class="label">Email</span>
+        <input name="email" type="email" autocomplete="username" required value="{{ email }}">
+      </label>
+      <label class="field">
+        <span class="label">Password</span>
+        <input name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button class="button primary" type="submit">Sign in</button>
+    </form>
+    <div class="callout">
+      <p><strong>Test account</strong></p>
+      <p>{{ test_email }}</p>
+      <p class="hint">Password {{ test_password }}</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -203,45 +203,37 @@ _busy = [
 
 _exceptions: list[dict] = []
 
-# Schedules for the seeded students, keyed by Stephen's ids. Titles stay here;
-# matching only gets title-free intervals through schedule_core.
 _student_weekly = {
     "u_jordan": {"tue": ("18:00", "22:00"), "wed": ("19:00", "21:00"), "thu": ("18:00", "21:00")},
+    "u_sam": {"tue": ("17:00", "21:00"), "wed": ("16:00", "20:00"), "thu": ("19:00", "22:00")},
     "u_priya": {"tue": ("19:00", "21:00"), "thu": ("17:00", "21:00")},
-    "u_jordanli": {"tue": ("19:00", "21:00")},
-    "u_sam": {"wed": ("16:00", "20:00"), "thu": ("19:00", "22:00")},
-    "u_aisha": {"tue": ("18:00", "21:00")},
-    "u_ben": {"tue": ("18:00", "21:00"), "thu": ("18:00", "21:00")},
-    "u_lena": {"wed": ("17:00", "21:00")},
-    "u_marcus": {"wed": ("17:00", "21:00")},
-    "u_omar": {"mon": ("17:00", "20:00"), "wed": ("17:00", "21:00")},
-    "u_chloe": {"wed": ("18:00", "21:00"), "thu": ("16:00", "20:00")},
-    "u_diego": {"tue": ("19:00", "22:00")},
-    "u_hana": {"wed": ("17:00", "20:00")},
-    "u_tyler": {"tue": ("18:00", "21:00")},
-    "u_nina": {"tue": ("17:00", "21:00"), "wed": ("18:00", "21:00")},
-    "u_kai": {"tue": ("18:00", "21:00")},
+    "u_leo": {"tue": ("18:00", "21:00"), "thu": ("18:00", "21:00")},
+    "u_ana": {"mon": ("17:00", "20:00"), "wed": ("17:00", "21:00"), "thu": ("16:00", "20:00")},
+    "u_ken": {"tue": ("18:00", "21:00"), "wed": ("18:00", "21:00")},
 }
 
-_MATH54_FINAL = {"course_id": "math54", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "priority": True}
-
 _student_exams = {
-    "u_sam": [{"id": "exam_sam", **_MATH54_FINAL}],
-    "u_lena": [{"id": "exam_lena", **_MATH54_FINAL}],
-    "u_chloe": [{"id": "exam_chloe", **_MATH54_FINAL}],
+    "u_sam": [
+        {"id": "exam_sam", "course_id": "math54", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "priority": True}
+    ],
+    "u_ana": [
+        {"id": "exam_ana", "course_id": "math54", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "priority": True}
+    ],
 }
 
 _student_busy = {
     "u_jordan": [
         {"id": "cal_j1", "source": "calendar", "starts_at": "2026-10-27T18:00", "ends_at": "2026-10-27T19:00", "title": "Lab section"},
     ],
+    "u_sam": [
+        {"id": "exam_sam", "source": "exam", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "title": "Math 54 exam"},
+    ],
     "u_priya": [
         {"id": "cal_p1", "source": "calendar", "starts_at": "2026-10-29T19:00", "ends_at": "2026-10-29T21:00", "title": "Work shift"},
     ],
-    **{
-        sid: [{"id": f"exam_{sid[2:]}", "source": "exam", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "title": "Math 54 exam"}]
-        for sid in ("u_sam", "u_lena", "u_chloe")
-    },
+    "u_ana": [
+        {"id": "exam_ana", "source": "exam", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "title": "Math 54 exam"},
+    ],
 }
 _person_index = 0
 _place_index = 0

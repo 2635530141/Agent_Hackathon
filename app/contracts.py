@@ -56,7 +56,6 @@ class PrivateProfile(PublicProfile):
     email: str
     street_address: str
     gender_self: Gender = ""
-    gender_preference: Gender = ""
     gender_preference: list[GenderChoice] = []
     under_18: bool = False
 

@@ -55,7 +55,11 @@ class DemoPlanner:
         # The time Filter can return up to twelve people, so only start an option the
         # six-call budget can finish (check, places, validate); then report no match.
         remaining = TOOL_CALL_CAP - 2
-        for ids, start in group_options(result["candidates"], result["group_size"], result["duration_minutes"]):
+        # Like the model would, try people who list the course and are within both travel
+        # radii first; the Filter no longer drops anyone for either, and dead ends cost calls.
+        course = (store.course_by_id(run["goal"]["course_id"]) or {}).get("code")
+        reachable = sorted(result["candidates"], key=lambda c: (course not in c["courses"], not all(c["within_radius"].values())))
+        for ids, start in group_options(reachable, result["group_size"], result["duration_minutes"]):
             if remaining < 3:
                 break
             args = {"candidate_ids": ids, "starts_at": start}

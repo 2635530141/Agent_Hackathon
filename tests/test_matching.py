@@ -197,7 +197,7 @@ def test_pages_render_with_seed_data(client):
     body = client.get("/api/match", params={"course_id": "math54", "starts_at": "2026-11-05T16:00", "ends_at": "2026-11-05T18:00"}).json()
     # Changed: /api/match is the Filter only (no model call), so there is no proposal.
     assert body["proposal"] is None
-    assert "Chloe" in [row["first_name"] for row in body["candidates"]]
+    assert "Ana" in [row["first_name"] for row in body["candidates"]]
     text = str(body)
     for private in ("@", "Channing", "Durant", "Work shift", "Lab section"):
         assert private not in text

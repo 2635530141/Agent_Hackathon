@@ -34,20 +34,20 @@ SEED_ANSWER = {
     "ranking": [
         {"id": "u_jordan", "why": "same course, year, major, style"},
         {"id": "u_priya", "why": "same course, year, major, style"},
-        {"id": "u_nina", "why": "same course, talks it through"},
-        {"id": "u_diego", "why": "EECS, talks it through"},
+        {"id": "u_sam", "why": "same course, talks it through"},
+        {"id": "u_ken", "why": "free, Math 54 only"},
     ],
     "runner_ups": ["u_priya"],
     "near_tie": True,
     "flags": [],
     "alternative": None,
 }
-CHLOE_ANSWER = {
+ANA_ANSWER = {
     "no_match": False,
-    "chosen_ids": ["u_chloe"],
+    "chosen_ids": ["u_ana"],
     "slot": {"starts_at": "2026-11-05T16:00-08:00", "ends_at": "2026-11-05T18:00-08:00"},
-    "reason": "Chloe has the same Math 54 exam and is free 4-6 PM.",
-    "ranking": [{"id": "u_chloe", "why": "same exam"}],
+    "reason": "Ana has the same Math 54 exam and is free 4-6 PM.",
+    "ranking": [{"id": "u_ana", "why": "same exam"}],
     "runner_ups": [],
     "near_tie": False,
     "flags": [],
@@ -61,7 +61,7 @@ def seed_model(monkeypatch):
     from app import advise
 
     monkeypatch.setattr(advise, "advise", REAL_ADVISE)
-    model = ScriptedModel(SEED_ANSWER, CHLOE_ANSWER)
+    model = ScriptedModel(SEED_ANSWER, ANA_ANSWER)
     monkeypatch.setattr(m, "advise_client", lambda: model)
     return model
 
@@ -106,7 +106,7 @@ def test_swap_person_cycles_the_ranking(client, seed_model):
         people, invite, _ = card(client.get("/session", params=TUE))
         seen.append(people[0])
         client.post("/session/swap-person", data={**TUE, "invite": invite})
-    assert seen == ["Jordan", "Priya", "Nina", "Diego"]
+    assert seen == ["Jordan", "Priya", "Sam", "Ken"]
 
 
 def test_unedited_invite_follows_the_swap_and_survives_refresh(client, seed_model):
@@ -130,8 +130,8 @@ def test_new_request_resets_swaps_and_drafts(client, seed_model):
     client.post("/session/swap-person", data={**TUE, "invite": "My own words"})
     math = {**TUE, "course_id": "math54", "starts_at": "2026-11-05T16:00", "ends_at": "2026-11-05T18:00"}
     people, invite, _ = card(client.get("/session", params=math))
-    assert people == ["Chloe"]
-    assert invite.startswith("Hi Chloe!")
+    assert people == ["Ana"]
+    assert invite.startswith("Hi Ana!")
 
 
 def test_swap_place(client):
@@ -181,9 +181,9 @@ def test_approve_without_an_approved_slot_sends_nothing(client):
 
 
 def test_ineligible_students_are_never_proposed(monkeypatch):
-    monkeypatch.setattr(m, "eligible_student_ids", lambda: ["u_diego"])
+    monkeypatch.setattr(m, "eligible_student_ids", lambda: ["u_sam"])
     proposal = m.build_proposal("CS 61A", TUE["starts_at"], TUE["ends_at"], "library", "")
-    assert [p.first_name for p in proposal.people] == ["Diego"]
+    assert [p.first_name for p in proposal.people] == ["Sam"]
 
 
 def test_under_18_and_gender_filters_come_from_the_profile_service():
@@ -199,7 +199,7 @@ def test_unknown_place_type_falls_back_to_the_profile():
 
 
 def test_profile_changes_reach_matching():
-    # Changed: there is no style score to move Nina up; the style reaches the model's input.
+    # Changed: there is no style score to reorder people; the style reaches the model's input.
     store.replace_owner({**store.owner(), "study_style": "talk"})
     assert m.requester_brief(m.load_inputs().me)["style"] == "talk it through"
 
@@ -208,7 +208,7 @@ def test_api_match_shapes(client):
     body = client.get("/api/match", params=TUE).json()
     assert set(body) == {"request", "funnel", "later", "candidates", "proposal", "message"}
     # Changed: the Filter has no scores; everyone free 7-9 PM has two hours, so id order.
-    assert body["candidates"][0]["first_name"] == "Ben" and body["proposal"] is None
+    assert body["candidates"][0]["first_name"] == "Jordan" and body["proposal"] is None
     assert set(body["candidates"][0]) == {"id", "first_name", "year", "major", "style", "shared_courses",
                                           "within_radius", "minutes_away", "slot"}
     bad = client.get("/api/match", params={**TUE, "ends_at": "2026-10-27T17:00"}).json()

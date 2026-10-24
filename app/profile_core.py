@@ -56,38 +56,6 @@ _KNOWN_ADDRESSES = {
     "sather gate": (CAMPUS_LAT, CAMPUS_LNG),
 }
 
-# Geocoding stub. Google Geocoding replaces this table; keys are lowercase
-# street prefixes, matched against the start of the entered address.
-_KNOWN_ADDRESSES = {
-    "2100 channing way": (37.8668, -122.2650),
-    "2425 durant ave": (37.8678, -122.2600),
-    "1800 euclid ave": (37.8760, -122.2604),
-    "2600 bancroft way": (37.8688, -122.2551),
-    "1920 oxford st": (37.8740, -122.2662),
-    "500 grand ave": (37.8105, -122.2593),
-    "39100 paseo padre pkwy": (37.5523, -121.9785),
-}
-
-
-def geocode(address: str) -> tuple[float, float] | None:
-    key = " ".join(address.lower().replace(",", " ").split())
-    for prefix, point in _KNOWN_ADDRESSES.items():
-        if key.startswith(prefix):
-            return point
-    return None
-
-
-def _anchor_point(anchor: str, street_address: str) -> tuple[float, float]:
-    """Radius center. The address itself never leaves this module."""
-    if anchor == "campus":
-        return CAMPUS_LAT, CAMPUS_LNG
-    if not street_address:
-        raise ValueError("Add a street address to center the radius on home.")
-    point = geocode(street_address)
-    if point is None:
-        raise ValueError("That address could not be located yet. Try another address or center on campus.")
-    return point
-
 
 def _maps_key() -> str:
     if os.environ.get("GOOGLE_MAPS_API_KEY"):

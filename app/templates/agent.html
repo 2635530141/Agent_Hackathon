@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Agent · StudyMate{% endblock %}
+{% macro hidden() -%}
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="version" value="{{ run.version if run else 0 }}">
+  <input type="hidden" name="action_key" value="{{ action_key }}">
+{%- endmacro %}
+{% block content %}
+<div class="stack-lg">
+  <div class="stack">
+    <h1 class="title">Find a plan that still works</h1>
+    <p class="lede">Tell me the goal. I will ask for missing details, check saved schedules, and replan if the evidence changes.</p>
+    <p class="hint">Berkeley synthetic demo · {{ timezone }} · no email or calendar writes. Places and opening hours are seeded examples.</p>
+  </div>
+  {% if error %}<p class="callout warn" role="alert">{{ error }}</p>{% endif %}
+  {% if not run %}
+  <form method="post" action="/agent" class="card stack">
+    {{ hidden() }}
+    <label class="field"><span class="label">What would you like to study?</span>
+      <textarea name="sentence" maxlength="1000" required placeholder="CS 61A, 2026-10-29T18:00 to 2026-10-29T21:00, 60 minutes, not a library"></textarea>
+    </label>
+    <label class="field"><span class="label">Planner</span><select name="mode">
+      <option value="demo">Local rule demo — no model call</option>
+      <option value="omnara">Omnara — requires server configuration</option>
+    </select></label>
+    <p class="hint">Known preferences: {{ preferences.study_style }} study, group of {{ preferences.group_size }}, {{ preferences.place_types | join(", ") }}. These do not need to be entered again.</p>
+    <button class="button primary" type="submit">Start request</button>
+  </form>
+  {% else %}
+  <div class="cluster">
+    <span class="chip">{{ 'Local rule demo — no model call' if run.mode == 'demo' else 'Omnara tool mode' }}</span>
+    <span class="chip">Revision {{ run.revision }} · {{ run.state }}</span>
+    <a href="/agent" class="button quiet">New request</a>
+  </div>
+  <p class="agent-copy">{{ run.input }}</p>
+  {% if run.notice %}<p class="callout warn" role="status">{{ run.notice }}</p>{% endif %}
+  <div id="agent-live" class="agent-live stack" role="status" aria-live="polite"></div>
+  {% if run.state != 'cancelled' %}
+  <details class="card stack" {% if not run.proposal %}open{% endif %}>
+    <summary>{{ run.question or 'Your requirements' }}</summary>
+    <p class="hint">The window is when you can study; duration is how long the session must last. I will keep both during replanning.</p>
+    <form method="post" action="/agent/{{ run.id }}/answer" class="stack" data-planning>
+      {{ hidden() }}
+      {% set editing = run.state in ['proposed','approved','no_match','error'] %}
+      {% if not goal.course_id or editing %}
+      <label class="field"><span class="label">Course</span><select name="course_id" required>
+        <option value="">Choose a course</option>{% for c in courses if c.id in preferences.course_ids %}<option value="{{ c.id }}" {% if goal.course_id == c.id %}selected{% endif %}>{{ c.code }}</option>{% endfor %}
+      </select></label>
+      {% else %}<p>Course: {{ goal.course_id }}</p>{% endif %}
+      {% if editing or (goal.course_id and (not goal.window_start or not goal.window_end)) %}
+      <div class="split">
+        <label class="field"><span class="label">Window starts</span><input name="window_start" type="datetime-local" value="{{ goal.window_start or '' }}" required></label>
+        <label class="field"><span class="label">Window ends</span><input name="window_end" type="datetime-local" value="{{ goal.window_end or '' }}" required></label>
+      </div>
+      {% elif goal.window_start and goal.window_end %}<p>Window: {{ goal.window_start }} to {{ goal.window_end }}</p>{% endif %}
+      {% if editing or (goal.course_id and goal.window_start and goal.window_end and not goal.duration_minutes) %}
+      <label class="field"><span class="label">Session duration (minutes)</span><input name="duration_minutes" type="number" min="15" max="240" value="{{ goal.duration_minutes or '' }}" required></label>
+      {% elif goal.duration_minutes %}<p>Duration: {{ goal.duration_minutes }} minutes</p>{% endif %}
+      {% if editing %}<label class="field"><span class="label">Place preference</span><select name="place_type">
+        <option value="">Use profile preference</option>{% for kind in ['coffee','library','outdoor'] %}<option value="{{ kind }}" {% if goal.place_type == kind %}selected{% endif %}>{{ kind }}</option>{% endfor %}
+      </select></label>{% endif %}
+      {% if goal.avoid %}<p class="hint">Excluded place types: {{ goal.avoid | join(', ') }}. Start a new request to remove a hard exclusion.</p>{% endif %}
+      <button type="submit" class="button">{{ 'Answer and continue' if run.state == 'clarifying' else 'Update requirements and plan' }}</button>
+    </form>
+  </details>
+  {% endif %}
+  {% if run.proposal %}
+  {% set p = run.proposal %}
+  <section class="card stack">
+    <h2>{{ p.people | map(attribute='first_name') | join(', ') }} · {{ p.course }}</h2>
+    <p>{{ p.when }}</p>
+    <p><a href="{{ p.place.map_url }}">{{ p.place.name }}</a> · {{ p.place.kind }} · {{ p.place.hours }}</p>
+    <p>{{ p.reason }}</p>
+    <p class="hint">Place source: seeded fixture; live hours are unverified. Calendar evidence: {{ p.evidence | map(attribute='verification') | unique | join(', ') }}.</p>
+    <details><summary>Invitation draft preview</summary><p class="agent-copy">{{ p.invite }}</p></details>
+    <form method="post" action="/agent/{{ run.id }}/approve" data-planning>
+      {{ hidden() }}<button class="button primary" type="submit">{{ 'Recheck approved plan' if run.state == 'approved' else 'Recheck and approve this plan' }}</button>
+    </form>
+    <p class="hint">Approval applies only to this preview revision. Sending remains in the team's separate Session flow; this page does not hand an unchecked plan to Send.</p>
+  </section>
+  {% endif %}
+  <div class="cluster">
+    {% if run.state in ['ready','error','no_match','clarifying','planning'] %}
+    <form method="post" action="/agent/{{ run.id }}/retry" data-planning id="agent-start">{{ hidden() }}<button class="button" type="submit">Run planner</button></form>
+    {% endif %}
+    {% if run.state != 'cancelled' %}
+    <form method="post" action="/agent/{{ run.id }}/cancel">{{ hidden() }}<button class="button quiet" type="submit">Stop request</button></form>
+    <form method="post" action="/agent/{{ run.id }}/refresh">{{ hidden() }}<button class="button quiet" type="submit">Refresh synthetic snapshots</button></form>
+    {% endif %}
+  </div>
+  {% if run.mode == 'demo' %}
+  <details class="card stack"><summary>Conflict demo controls</summary>
+    <p class="hint">Add a real busy record to the selected fictional candidate's saved schedule. Then press Recheck and approve: the old proposal must be invalidated before a replacement is offered.</p>
+    {% if run.proposal and not run.demo_block %}<form method="post" action="/agent/{{ run.id }}/simulate">{{ hidden() }}<button class="button" type="submit">Simulate a new candidate conflict</button></form>{% endif %}
+    {% if run.demo_block %}<form method="post" action="/agent/{{ run.id }}/reset_conflict" data-planning>{{ hidden() }}<button class="button quiet" type="submit">Remove this simulated conflict and replan</button></form>{% endif %}
+  </details>
+  {% endif %}
+  <section class="card stack"><h2>What actually happened</h2>
+    <ol class="agent-trace" id="agent-trace">{% for e in run.events %}<li>{{ e.summary }} <span class="meta">r{{ e.revision }}{% if e.elapsed_ms is defined %} · {{ e.elapsed_ms }} ms{% endif %}</span>
+      {% if e.result is defined %}<details><summary>Tool evidence</summary><pre class="agent-copy">{{ e.result | tojson(indent=2) }}</pre></details>{% endif %}
+    </li>{% endfor %}</ol>
+  </section>
+  <script>
+  (() => {
+    const live = document.getElementById('agent-live');
+    let running = {{ 'true' if run.state == 'planning' else 'false' }};
+    async function poll() {
+      if (!running) return;
+      try {
+        const response = await fetch('/agent/{{ run.id }}/status');
+        if (!response.ok) throw new Error('status');
+        const data = await response.json();
+        live.textContent = data.events.map(e => e.summary).slice(-3).join(' · ');
+        if (data.state !== 'planning') { location.reload(); return; }
+      } catch { live.textContent = 'Connection interrupted. Reload to inspect the saved request.'; }
+      setTimeout(poll, 1000);
+    }
+    document.querySelectorAll('form[data-planning]').forEach(form => form.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (running) return;
+      running = true;
+      live.textContent = 'Planning and checking saved evidence. You can stop this request.';
+      document.querySelectorAll('form[data-planning] button').forEach(b => b.disabled = true);
+      setTimeout(poll, 1000);
+      try {
+        const response = await fetch(form.action, {method:'POST', body:new FormData(form)});
+        if (!response.ok) throw new Error('request');
+        if (response.redirected) { location.assign(response.url); return; }
+        const errorPage = new DOMParser().parseFromString(await response.text(), 'text/html');
+        running = false;
+        live.textContent = errorPage.querySelector('[role="alert"]')?.textContent || 'Review the requirements and retry.';
+        document.querySelectorAll('form[data-planning] button').forEach(b => b.disabled = false);
+      } catch { running = false; live.textContent = 'Connection interrupted. Reload to inspect the saved request.'; }
+    }));
+    {% if run.state == 'ready' %}document.getElementById('agent-start').requestSubmit();{% elif run.state == 'planning' %}poll();{% endif %}
+  })();
+  </script>
+  {% endif %}
+</div>
+{% endblock %}

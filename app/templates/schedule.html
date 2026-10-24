@@ -1,10 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Schedule · StudyMate{% endblock %}
+{% block feature_styles %}<link rel="stylesheet" href="/static/calendar.css">{% endblock %}
+{% block feature_scripts %}<script src="/static/calendar.js?v=5" defer></script>{% endblock %}
 {% block content %}
 <div class="stack-lg">
   <div class="stack">
     <h1 class="title">Schedule and calendar</h1>
-    <p class="lede">Weekly hours are when you can study. Exams and busy events block a session. Matching reads the same saved schedule without titles.</p>
+    <p class="lede">Make room for your next study session.</p>
     <div class="callout warn"><p>Synthetic calendar data only · {{ timezone }}. Demo sign-in is enabled; real calendar accounts are not available. This demo identity cannot connect a real Google account.</p></div>
   </div>
   {% if error %}
@@ -14,6 +16,10 @@
   <div class="callout good"><p>Saved.</p></div>
   {% endif %}
 
+  {% include "partials/calendar_week.html" %}
+  <details class="calendar-details card">
+  <summary>Detailed editors, effective free time and private records</summary>
+  <div class="stack-lg">
   <section class="card stack">
     <h2>Effective availability</h2>
     <form method="get" action="/schedule" class="cluster"><label class="field"><span class="label">Date ({{ timezone }})</span><input type="date" name="day" value="{{ selected_day }}"></label><button class="button" type="submit">View free time</button></form>
@@ -152,5 +158,6 @@
       </ul>
     </div>
   </section>
+  </div></details>
 </div>
 {% endblock %}

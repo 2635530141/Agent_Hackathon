@@ -2,25 +2,29 @@
 import logging
 from datetime import datetime, timezone
 from threading import Lock, RLock
+from secrets import token_urlsafe
 import httpx
 from authlib.integrations.httpx_client import OAuth2Client
-from .google_config import AUTH_URL, TOKEN_URL, READ_SCOPE
+from .google_config import AUTH_URL, TOKEN_URL, READ_SCOPE, WRITE_SCOPE
 from .google_storage import GoogleStateError
 
 
 class _GoogleLogFilter(logging.Filter):
     def filter(self, record):
         message = record.getMessage()
-        if any(host in message for host in ("googleapis.com","accounts.google.com","/calendar/google/callback")):
+        if any(host in message.lower() for host in ("googleapis.com","accounts.google.com","/calendar/google/callback",
+                "authorization","access_token","refresh_token","id_token","client_secret")):
             record.msg, record.args = "Google Calendar HTTP request (details redacted)", ()
         return True
 
 
 def protect_provider_logs():
-    for name in ("httpx","httpx2","httpcore","uvicorn.access"):
+    for name in ("httpx","httpx2","httpcore","httpcore.http11","httpcore.http2","httpcore.connection","httpcore.proxy","uvicorn.access"):
         logger = logging.getLogger(name)
         if not any(isinstance(f,_GoogleLogFilter) for f in logger.filters):
             logger.addFilter(_GoogleLogFilter())
+        if name.startswith("httpcore"):
+            logger.setLevel(logging.WARNING)
     # Authlib can emit token dictionaries at DEBUG. Never route them to shared logs.
     for name in list(logging.Logger.manager.loggerDict):
         if name.startswith("authlib"):
@@ -28,10 +32,12 @@ def protect_provider_logs():
 
 
 class GoogleOAuth:
-    def __init__(self, config, vault, clock=None, transport=None):
+    def __init__(self, config, vault, clock=None, transport=None, identity_verifier=None):
         self.config, self.vault = config, vault
         self.clock = clock or (lambda:datetime.now(timezone.utc))
         self.transport = transport
+        from .google_identity import GoogleIdentityVerifier
+        self.identity_verifier = identity_verifier or GoogleIdentityVerifier(config.client_id,self.clock,transport)
         self._locks, self._guard = {}, Lock()
         protect_provider_logs()
 
@@ -40,8 +46,9 @@ class GoogleOAuth:
             return self._locks.setdefault(owner_id,RLock())
 
     def client(self, **kwargs):
+        scope = kwargs.pop("scope",READ_SCOPE)
         return OAuth2Client(client_id=self.config.client_id,client_secret=self.config.client_secret,
-            scope=READ_SCOPE,redirect_uri=self.config.redirect_uri,token_endpoint_auth_method="client_secret_post",
+            scope=scope,redirect_uri=self.config.redirect_uri,token_endpoint_auth_method="client_secret_post",
             code_challenge_method="S256",timeout=10,transport=self.transport,**kwargs)
 
     def begin(self, actor):
@@ -49,6 +56,16 @@ class GoogleOAuth:
         with self.client() as client:
             url, _ = client.create_authorization_url(AUTH_URL,state=state,code_verifier=verifier,
                 access_type="offline",prompt="consent")
+        return url
+
+    def begin_write(self, actor):
+        # Incremental authorization is an explicit user action; callback never exports.
+        self.vault.load(actor.subject_id)
+        nonce = token_urlsafe(32)
+        state, verifier = self.vault.issue(actor,self.clock(),{"purpose":"write","nonce":nonce})
+        with self.client(scope=f"{READ_SCOPE} {WRITE_SCOPE} openid") as client:
+            url, _ = client.create_authorization_url(AUTH_URL,state=state,code_verifier=verifier,
+                access_type="offline",prompt="consent",include_granted_scopes="true",nonce=nonce)
         return url
 
     def _validate_token(self, token, previous=None):
@@ -60,6 +77,8 @@ class GoogleOAuth:
             raise GoogleStateError("READ_SCOPE_REQUIRED")
         if previous and not token.get("refresh_token"):
             token["refresh_token"] = previous.get("refresh_token")
+        if previous and previous.get("account_subject"):
+            token["account_subject"] = previous["account_subject"]
         if not token.get("refresh_token"):
             # No identity scope is requested, so a new grant cannot prove an old
             # refresh token belongs to this Google account. Require fresh consent.
@@ -69,12 +88,25 @@ class GoogleOAuth:
         return token
 
     def complete(self, actor, code, state, after_save=None):
-        verifier, generation = self.vault.consume(actor,state,self.clock())
+        verifier, generation, context = self.vault.consume_details(actor,state,self.clock())
         try:
             with self.client() as client:
                 token = client.fetch_token(TOKEN_URL,code=code,grant_type="authorization_code",code_verifier=verifier)
-            token = self._validate_token(token)
+            if context and context.get("purpose")=="write":
+                subject = self.identity_verifier(token.get("id_token",""),context["nonce"])
+                old, _, _ = self.vault.load(actor.subject_id)
+                if old.get("account_subject") and old["account_subject"] != subject:
+                    raise GoogleStateError("GOOGLE_ACCOUNT_BINDING_CHANGED")
+                # A denied/missing incremental scope does not destroy the read grant.
+                if WRITE_SCOPE not in str(token.get("scope","")).split():
+                    raise GoogleStateError("WRITE_SCOPE_REQUIRED")
+                same_account = old if old.get("account_subject")==subject else None
+                token = self._validate_token(token,previous=same_account)
+                token["account_subject"] = subject
+            else:
+                token = self._validate_token(token)
             self.vault.save(actor.subject_id,token,generation,new_authorization=True,on_saved=after_save)
+            return context
         except GoogleStateError:
             raise
         except Exception:
@@ -86,7 +118,7 @@ class GoogleOAuth:
             if not force and float(old.get("expires_at",0)) > self.clock().timestamp()+30:
                 return old["access_token"]
             try:
-                with self.client(token=old) as client:
+                with self.client(token=old,scope=old["scope"]) as client:
                     response = client.refresh_token(TOKEN_URL,refresh_token=old["refresh_token"])
                 refreshed = self._validate_token(response,previous=old)
                 self.vault.save(owner_id,refreshed,generation,version=version)

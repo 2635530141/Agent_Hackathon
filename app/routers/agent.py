@@ -86,10 +86,6 @@ def act(request: Request, run_id: str, action: str, csrf_token: str = Form(""), 
     try:
         if action == "cancel":
             service.cancel(run_id, actor.subject_id)
-        elif action == "refresh":
-            if run["version"] != version or run["state"] == "planning":
-                raise StaleRun()
-            service.refresh_synthetic()
         else:
             patch = {k:v for k,v in {"course_id":course_id,"window_start":window_start,"window_end":window_end,
                      "duration_minutes":int(duration_minutes) if duration_minutes else None,"place_type":place_type}.items() if v}

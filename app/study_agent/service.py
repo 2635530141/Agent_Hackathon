@@ -134,6 +134,15 @@ class AgentService:
             event(run,"recovered","Previous planning lease expired. Explicit retry starts a fresh bounded attempt.")
         if run["state"] == "cancelled":
             raise ValueError("This request is cancelled; start another request.")
+        if action == "refresh":
+            self.refresh_synthetic()
+            run.update(approved_revision=None, notice="Synthetic snapshots refreshed. Recheck any existing plan against the new evidence.")
+            if run.get("proposal"):
+                run["state"] = "proposed"
+            run["processed"].append(key)
+            event(run,"refreshed",run["notice"])
+            self.repository.save(run)
+            return run
         if action == "answer":
             run["goal"] = checked_goal({**run["goal"], **(patch or {})})
             run.update(proposal=None, approved_revision=None, lock_goal=False, notice="Requirements updated; previous approval cleared.")

@@ -23,3 +23,18 @@ def build_google_integration(repository, session_gateway, timezone_for_owner, *,
     provider = GoogleCalendarProvider(oauth.access_token,timezone_for_owner,clock=clock,
                                       generation_for_owner=vault.generation)
     return GoogleCalendarIntegration(repository,vault,oauth,provider,session_gateway)
+
+
+def build_export_service(active, session_gateway):
+    """Explicit M3 composition; synthetic Session/store cannot authorize live writes."""
+    from .export_storage import ExportRepository
+    from .export_service import CalendarExportService
+    from .google_writer import GoogleEventWriter
+    if not getattr(session_gateway,"authoritative",False):
+        raise ValueError("An authoritative revision-guarded SessionGateway is required")
+    if active.service.sessions is not session_gateway:
+        raise ValueError("Read/refresh/export must use the same authoritative SessionGateway")
+    repository = ExportRepository(active.repository.engine)
+    repository.migrate()
+    return CalendarExportService(repository,session_gateway,GoogleEventWriter(active.oauth),
+        active.service,active.refresh_calendars,active.oauth.clock)

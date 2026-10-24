@@ -55,7 +55,7 @@ class GoogleVault:
 
     def save(self, owner_id, payload, generation, version=None, new_authorization=False, on_saved=None):
         # Keep only necessary OAuth fields, with no identity/email/raw JSON persistence.
-        allowed = {k:payload[k] for k in ("access_token","refresh_token","token_type","expires_at","scope") if k in payload}
+        allowed = {k:payload[k] for k in ("access_token","refresh_token","token_type","expires_at","scope","account_subject") if k in payload}
         encrypted = self.cipher.encrypt(json.dumps(allowed).encode())
         with self.engine.begin() as conn:
             self._ensure(conn,owner_id)
@@ -69,17 +69,21 @@ class GoogleVault:
             if on_saved:
                 on_saved(conn)
 
-    def issue(self, actor, now):
+    def issue(self, actor, now, context=None):
         state, verifier = token_urlsafe(32), token_urlsafe(48)
         with self.engine.begin() as conn:
             self._ensure(conn,actor.subject_id)
             generation = conn.execute(select(self.tokens.c.generation).where(self.tokens.c.owner_id==actor.subject_id)).scalar_one()
             conn.execute(insert(self.states).values(state_hash=digest(state),owner_id=actor.subject_id,
                 session_hash=digest(actor.session_binding),expires_at=now+timedelta(minutes=10),generation=generation,
-                used=0,verifier=self.cipher.encrypt(verifier.encode())))
+                used=0,verifier=self.cipher.encrypt(json.dumps({"verifier":verifier,"context":context}).encode())))
         return state, verifier
 
     def consume(self, actor, state, now):
+        verifier, generation, _ = self.consume_details(actor,state,now)
+        return verifier, generation
+
+    def consume_details(self, actor, state, now):
         with self.engine.begin() as conn:
             row = conn.execute(update(self.states).where(self.states.c.state_hash==digest(state),
                 self.states.c.owner_id==actor.subject_id,self.states.c.session_hash==digest(actor.session_binding),
@@ -88,8 +92,10 @@ class GoogleVault:
         if row is None:
             raise GoogleStateError("INVALID_OAUTH_STATE")
         try:
-            return self.cipher.decrypt(row[0]).decode(), row[1]
-        except InvalidToken:
+            raw = self.cipher.decrypt(row[0]).decode()
+            payload = json.loads(raw) if raw.startswith("{") else {"verifier":raw,"context":None}
+            return payload["verifier"], row[1], payload["context"]
+        except (InvalidToken, ValueError, KeyError):
             raise GoogleStateError("INVALID_OAUTH_STATE") from None
 
     def disconnect(self, owner_id, on_disconnected=None):

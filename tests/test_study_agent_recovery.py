@@ -89,3 +89,12 @@ def test_thirty_minute_duration_in_three_hour_window_does_not_require_sixty():
     assert run["proposal"]["candidate_ids"] == ["u_jordan"]
     assert run["proposal"]["starts_at"] == "2026-10-30T02:00:00+00:00"
     assert run["proposal"]["ends_at"] == "2026-10-30T02:30:00+00:00"
+
+
+def test_explicit_refresh_is_reported_and_clears_old_approval():
+    service = AgentService()
+    run = act(service,service.create(store.OWNER_ID,"Study",goal=GOAL),"retry")
+    run = act(service,run,"approve")
+    run = act(service,run,"refresh")
+    assert run["state"] == "proposed" and run["approved_revision"] is None
+    assert run["events"][-1]["kind"] == "refreshed"

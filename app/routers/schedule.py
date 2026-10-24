@@ -10,12 +10,17 @@ from app.scheduling.demo import demo_owner, FIXTURE_HORIZON
 from app.scheduling.runtime import get_runtime
 from app.scheduling.time import display_zone, local_input, horizon
 from app.scheduling.core.schemas import Actor
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 router = APIRouter(dependencies=[Depends(demo_owner)])
 
 
 def _page(request: Request, error: str = "", saved: str = ""):
+    from secrets import token_urlsafe
+    from app.scheduling.week_view import week_payload
+    if not request.session.get("calendar_editor_csrf"):
+        request.session["calendar_editor_csrf"] = token_urlsafe(32)
     selected = request.query_params.get("day", "2026-10-29")
     try:
         day = date.fromisoformat(selected)
@@ -66,6 +71,9 @@ def _page(request: Request, error: str = "", saved: str = ""):
         timezone=display_zone(), availability=availability, selected_day=day.isoformat(),
         overnight={schedule_core.DAYS[r.weekday]:r.ends_next_day for r in get_runtime().repository.list_records(store.OWNER_ID,"weekly-rules")},
         free_rows=[pretty_range(local_input(i.start),local_input(i.end)) for i in availability.available],
+        calendar_week=week_payload(get_runtime().service,store.OWNER_ID,day),
+        editor_csrf=request.session["calendar_editor_csrf"],
+        today=datetime.now(ZoneInfo(display_zone())).date().isoformat(),
     )
 
 

@@ -9,6 +9,7 @@ from app.format import pretty_range
 from app.omnara_client import OmnaraError, interpret_request
 from app.profile_core import PLACE_LABELS, public_profile
 from app.web import render
+from app.scheduling.session_hooks import refresh_before_request, export_card
 
 router = APIRouter()
 
@@ -161,6 +162,7 @@ def _form_only(request: Request, sentence: str, error: str = "", notice: str = "
         study_anyway=False,
         error=error,
         notice=notice,
+        calendar_export=export_card(request),
         conflict=None,
         proposal=None,
         when="",
@@ -192,7 +194,7 @@ def session_page(
         context["proposal"] = None
         context["conflict"] = None
         notice = notice or "Request discarded. Nothing was sent."
-    return render(request, "session.html", nav="session", notice=notice, **context)
+    return render(request, "session.html", nav="session", notice=notice, calendar_export=export_card(request), **context)
 
 
 @router.post("/session/interpret")
@@ -202,6 +204,7 @@ def interpret(request: Request, sentence: str = Form("")):
         return _form_only(request, "", error="Write what you want to study.")
     courses = _profile_courses() or store.courses()
     try:
+        refresh_before_request(request)
         parsed = _parsed(interpret_request(text, courses), courses)
     except (OmnaraError, ValueError) as exc:
         return _form_only(request, text, error=str(exc))
@@ -283,6 +286,7 @@ def swap_place(
 
 @router.post("/session/confirm")
 def confirm_invite(
+    request: Request,
     course_id: str = Form(...),
     starts_at: str = Form(...),
     ends_at: str = Form(...),
@@ -294,6 +298,7 @@ def confirm_invite(
 ):
     course = _course_record(course_id)
     try:
+        refresh_before_request(request)
         conflict = schedule_core.own_conflict(starts_at, ends_at, study_anyway == "1")
     except ValueError:
         conflict = {"title": "That time"}

@@ -1,4 +1,6 @@
-# Calendar integration v2 — M1.5 and gated M2
+# Calendar integration — M1.5/M2 baseline
+
+Current M3 executor, interactive week/day UI, actual team hook wiring and remaining live gates are described in [calendar-writeback-handoff.md](calendar-writeback-handoff.md). The test counts below are the M1.5/M2 checkpoint; the current results are in calendar-integration-progress.md.
 
 This version continues the main-based integration developed in this chat. The user's older `shuluun` version is preserved and is not the implementation baseline. No old provider/Omnara code has been imported. Initial base: `03ef6c4`; latest team main `c69e063` is merged with its login, landing page and Session interpretation UI intact. M1.5 commit: `0e1f0e9`; M2 commit: `22e200d`. See [M2 implementation/configuration](calendar-google-readonly.md) and [execution record](calendar-integration-progress.md).
 
@@ -8,7 +10,7 @@ The existing `/schedule` page, team shared models and `starts_at`/`ends_at` name
 
 Owner forms and Matching now read one persistent calendar database. Weekly hours, additions, unavailable exceptions, exams and explicit priority starts have create/edit/remove flows; exam edits affect both the page and Matching. Calendar snapshots and confirmed reservations are subtracted. Priority never grants time. Owner alternatives retain the exact requested duration and avoid all known blocks. No feasible alternative is represented by null fields and a visible message.
 
-`study_anyway` cannot skip parsing, exams, unavailable time, other users' conflicts or the configured study hours. Ordinary organizer calendar overrides remain disabled until Marc provides a current request/revision approval gateway. The old browser boolean is not approval. Export is disabled, including the prior synthetic acceptance button; there is no Google write capability.
+`study_anyway` cannot skip parsing, exams, unavailable time, other users' conflicts or the configured study hours. Ordinary organizer calendar overrides remain disabled until Marc provides a current request/revision approval gateway. The old browser boolean is not approval. The current synthetic host's export remains disabled, including the prior synthetic acceptance button. M3 write/delete code requires separate real identity/Session composition and current-version approval; it is not enabled by demo acceptance.
 
 ## Stable calls
 

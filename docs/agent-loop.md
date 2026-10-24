@@ -1,12 +1,14 @@
 # Study planning loop
 
-This extends Calendar v2 on `shuluun`, starting from `da61959`. It preserves team Profile, Matching, Session and calendar guards. `/agent` is linked from Session and the shared navigation. No new invitation/session lifecycle, email sender, booking connector or calendar writer is introduced.
+This extends Calendar on `shuluun`, starting from `da61959` and integrating the subsequently published M3/timetable head `a07b98a`. It preserves team Profile, Matching, Session, timetable and export guards. `/agent` is linked from Session and the shared navigation. The agent adds no invitation/session lifecycle, email sender, booking connector or calendar writer.
 
 ## Repository review before implementation
 
 GitHub was fetched and inspected on October 24, 2026. `main` was `c69e063`, `shuluun` was `da61959` (7 commits ahead, 0 behind main), and `stephen` was `f74bacc` (3 unique commits, diverged from main). Stephen's profile/eligibility/geocoding changes were read but not merged or overwritten. PR #2 was an open draft, mergeable, with no reviews or inline review comments. There were no separate open issues. The only reported Actions run passed on the historical `ee42763`, not the current v2 head; v2 had zero check runs and no workflow file. Unmodified v2 was reproduced here: **102 passed, 2 dependency deprecation warnings**, Python 3.12. The first test attempt lacked the local `.tmp` parent; creating it resolved the environment error without changing source.
 
 Current scope boundaries: seeded demo authentication, shared fixture Profile and in-memory Session are not production per-user identity. Live Google is gated. Existing Session sentence interpretation is separate legacy code; it is not the new custom-tool loop. The new loop does not turn its preview approval into the legacy Session's unchecked Send parameters.
+
+The required pre-push recheck found two newer remote commits: `c3f9ec6` (M3 export/timetable) and `a07b98a` (verification docs). They were read and integrated before publication. The only textual merge conflict was additive router registration in `app/main.py`; both Agent and all M3 routers are retained. Base-template extension blocks, timetable/export specimens, Session refresh hooks and gated export UI remain. M3 has mock-tested writer code, but real export remains unavailable on this synthetic host and no writer is exposed to the agent. Agent tools keep reading saved snapshots; the explicit synthetic refresh control is outside the model. Live refresh/Send integration is not claimed for this new preview surface.
 
 ## Behavior
 
@@ -17,7 +19,7 @@ Current scope boundaries: seeded demo authentication, shared fixture Profile and
 5. If evidence changes, invalidate the old proposal and approval, preserve the goal, and replan. No match means ask the student to change constraints, never silently shorten duration, reduce group size, leave the window or relax an exclusion.
 6. Stop cancels local progress at a boundary and requests best-effort cloud cancellation. State survives a restart; an expired planning lease permits explicit retry, with attempt/version fencing against an older worker.
 
-The approve button approves a **preview plan only**. There is no delivery, reservation or authoritative session acceptance here. Calendar export and organizer overrides remain disabled. Connecting this evidence revision to Marc's executor/reservation transaction remains a separate integration task; no claim of solving send-time race conditions is made.
+The approve button approves a **preview plan only**. There is no delivery, reservation or authoritative session acceptance here. Real calendar export and organizer overrides remain unavailable on this synthetic host. Connecting this evidence revision to Marc's executor/reservation transaction remains a separate integration task; no claim of solving send-time race conditions is made.
 
 ## Tools
 
@@ -64,3 +66,5 @@ Log in using the displayed synthetic account, then open `/agent`. Start with `CS
 Evaluation covers complete requests; missing course/window/duration; no overlap/full-duration enforcement; hard place exclusion; groups; calendar unknown; changed evidence and approval invalidation; idempotent/stale confirmation; persistence/owner isolation; private-field redaction; forged entities and tools; looping, timeouts and cancellation; CSRF/origin checks; and native Omnara HTTP replays. These are deterministic offline checks, not the PRD's online acceptance-rate or full live-provider golden evaluation. Exact current test/browser/publication evidence is recorded after validation.
 
 Pre-integration validation against `da61959`: **142 passed, 2 dependency deprecation warnings**; pip check and diff check passed. Browser completed course-only -> window clarification -> duration clarification -> actual tools -> 19:00–20:00 proposal -> approve -> simulated candidate conflict -> 20:00–21:00 replacement with approval cleared. Both slots are within the original 18:00–21:00 window, with the full 60 minutes. The browser check also corrected whole-document replacement to ordinary navigation and collapsed the requirement editor once a proposal exists. No real provider action occurred.
+
+Final integrated validation after M3 and refresh-feedback fixes: **181 passed, 2 dependency deprecation warnings, 19.92 seconds**, including all 140 upstream M3 tests and 41 added agent checks. `pip check`, `compileall`, `git diff --check` and both existing Calendar JavaScript syntax checks passed. A fresh Uvicorn process retained the same request/replanning trace; the final browser also rendered the M3 timetable. Explicit synthetic refresh reported its action and cleared old approval. The test conflict was removed through its own UI control; no other calendar records were removed. Local screen evidence is outside Git at the parent workspace's `03_assets/agent_conflict_replanned.png`. Databases, cookies and credentials are not committed. The new four-job workflow runs Python 3.12/3.13 on Windows/Ubuntu; its actual remote result must be verified separately from this local result.

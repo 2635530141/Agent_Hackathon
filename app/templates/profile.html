@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Profile · StudyMate{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  <div class="stack">
+    <h1 class="title">Profile</h1>
+    <p class="lede">Stephen owns this page. What a match sees is the public profile. Street address and gender stay here.</p>
+  </div>
+  {% if error %}
+  <div class="callout warn"><p>{{ error }}</p></div>
+  {% endif %}
+  {% if saved %}
+  <div class="callout good"><p>Profile saved. Street address and gender stay on this page only.</p></div>
+  {% endif %}
+  <div class="split">
+    <form method="post" action="/profile" class="stack">
+      <fieldset class="stack">
+        <legend class="section-title">Study style</legend>
+        <div class="choices">
+          {% for value, label in style_labels.items() %}
+          <label class="choice">
+            <input type="radio" name="study_style" value="{{ value }}" {% if profile.study_style == value %}checked{% endif %}>
+            {{ label }}
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="stack">
+        <legend class="section-title">Travel</legend>
+        <label class="field">
+          <span class="label">Street address</span>
+          <input name="street_address" value="{{ profile.street_address }}" autocomplete="street-address">
+          <span class="hint">Stored for the radius. A match never receives this string.</span>
+        </label>
+        <label class="field">
+          <span class="label">Travel radius in meters</span>
+          <input name="radius_meters" type="number" min="200" max="20000" value="{{ profile.radius_meters }}">
+        </label>
+        <div class="choices">
+          <label class="choice">
+            <input type="radio" name="anchor" value="home" {% if profile.anchor == "home" %}checked{% endif %}>
+            Center on home
+          </label>
+          <label class="choice">
+            <input type="radio" name="anchor" value="campus" {% if profile.anchor == "campus" %}checked{% endif %}>
+            Center on campus
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="stack">
+        <legend class="section-title">Group and places</legend>
+        <div class="choices">
+          {% for size in (2, 3, 4) %}
+          <label class="choice">
+            <input type="radio" name="group_size" value="{{ size }}" {% if profile.group_size == size %}checked{% endif %}>
+            Group of {{ size }}
+          </label>
+          {% endfor %}
+        </div>
+        <div class="choices">
+          {% for value, label in place_labels.items() %}
+          <label class="choice">
+            <input type="checkbox" name="place_types" value="{{ value }}" {% if value in profile.place_types %}checked{% endif %}>
+            {{ label }}
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="stack">
+        <legend class="section-title">School</legend>
+        <div class="split">
+          <label class="field">
+            <span class="label">Major</span>
+            <input name="major" value="{{ profile.major }}" id="major-input">
+          </label>
+          <label class="field">
+            <span class="label">Year</span>
+            <select name="year">
+              {% for year in range(1, 6) %}
+              <option value="{{ year }}" {% if profile.year == year %}selected{% endif %}>{{ year }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="choices">
+          {% for course in courses %}
+          <label class="choice">
+            <input type="checkbox" name="course_ids" value="{{ course.id }}" {% if course.id in profile.course_ids %}checked{% endif %}>
+            {{ course.code }}
+            <span class="hint">{{ course.name }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="stack">
+        <legend class="section-title">Private matching</legend>
+        <p class="hint">Optional. Used later as a filter. Omitted from the profile card and the invite.</p>
+        <div class="split">
+          <label class="field">
+            <span class="label">I identify as</span>
+            <select name="gender_self">
+              <option value="" {% if not profile.gender_self %}selected{% endif %}>Leave blank</option>
+              <option value="woman" {% if profile.gender_self == "woman" %}selected{% endif %}>Woman</option>
+              <option value="man" {% if profile.gender_self == "man" %}selected{% endif %}>Man</option>
+              <option value="nonbinary" {% if profile.gender_self == "nonbinary" %}selected{% endif %}>Non-binary</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="label">Prefer to study with</span>
+            <select name="gender_preference">
+              <option value="" {% if not profile.gender_preference %}selected{% endif %}>No preference</option>
+              <option value="woman" {% if profile.gender_preference == "woman" %}selected{% endif %}>Women</option>
+              <option value="man" {% if profile.gender_preference == "man" %}selected{% endif %}>Men</option>
+              <option value="nonbinary" {% if profile.gender_preference == "nonbinary" %}selected{% endif %}>Non-binary students</option>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+      <div class="cluster">
+        <button class="button primary" type="submit">Save profile</button>
+      </div>
+    </form>
+
+    <aside class="card stack" id="match-view">
+      <h2>What a match sees</h2>
+      <div class="person">
+        <strong>{{ public.name }}</strong>
+        <span class="meta" id="match-major">{{ public.major }} · year {{ public.year }}</span>
+      </div>
+      <div class="chips">
+        <span class="chip">{{ style_labels[public.study_style] }}</span>
+        <span class="chip">Group of {{ public.group_size }}</span>
+        {% for place in public.place_types %}
+        <span class="chip">{{ place_labels[place] }}</span>
+        {% endfor %}
+        <span class="chip">{{ public.radius_meters }} m · {{ public.anchor }}</span>
+      </div>
+      <ul class="busy-list">
+        {% for course in courses if course.id in public.course_ids %}
+        <li>{{ course.code }}</li>
+        {% endfor %}
+      </ul>
+      <p class="hint">Street address and gender are not in this view.</p>
+    </aside>
+  </div>
+</div>
+{% endblock %}

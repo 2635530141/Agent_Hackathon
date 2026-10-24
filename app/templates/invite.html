@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Invite · StudyMate{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  <div class="stack">
+    <h1 class="title">Study invite</h1>
+    <p class="lede">This is the invited student's page. It shows the course, time, and place. It does not show the organizer's calendar.</p>
+  </div>
+  {% if not known %}
+  <div class="callout warn"><p>This invite is not in the demo store.</p></div>
+  {% elif invitation.status == "draft" %}
+  <div class="callout"><p>The organizer has not sent this invite yet.</p></div>
+  {% else %}
+  <article class="card stack">
+    <div class="person">
+      <strong>{{ course.code }}</strong>
+      <span class="meta">{{ course.name }}</span>
+    </div>
+    <p>{{ when }}</p>
+    <p>{{ place_name }}</p>
+    {% if invitation.status == "pending" %}
+    <div class="cluster">
+      <form method="post" action="/invite/{{ invitation_id }}/accept">
+        <button class="button primary" type="submit">Accept</button>
+      </form>
+      <form method="post" action="/invite/{{ invitation_id }}/decline">
+        <button class="button danger" type="submit">Decline</button>
+      </form>
+    </div>
+    {% elif invitation.status == "accepted" %}
+    <div class="callout good"><p>You accepted. The organizer can add it to their calendar.</p></div>
+    {% else %}
+    <div class="callout warn"><p>You declined.</p></div>
+    {% endif %}
+  </article>
+  {% endif %}
+</div>
+{% endblock %}

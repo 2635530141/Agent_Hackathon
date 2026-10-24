@@ -1,0 +1,52 @@
+<article class="card proposal">
+  <header>
+    <div class="stack">
+      {% for person in proposal.people %}
+      <div class="person">
+        <strong>{{ person.first_name }}</strong>
+        <span class="meta">{{ person.major }} · year {{ person.year }} · {{ person.course_code }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <span class="meta">{{ when }}</span>
+  </header>
+  <p>
+    <a href="{{ proposal.place.map_url }}">{{ proposal.place.name }}</a>
+    · {{ proposal.place.address }}
+  </p>
+  <p class="hint">{{ proposal.place.hours }} · rating {{ proposal.place.rating }} · Not reserved. Find a spot on arrival.</p>
+  <p class="hint">{{ proposal.reason }}</p>
+  {% if interactive %}
+  <form method="post" action="/session/draft" class="stack">
+    <input type="hidden" name="course_id" value="{{ course.id }}">
+    <input type="hidden" name="starts_at" value="{{ starts_at }}">
+    <input type="hidden" name="ends_at" value="{{ ends_at }}">
+    <input type="hidden" name="place_type" value="{{ place_type }}">
+    <input type="hidden" name="note" value="{{ note }}">
+    <input type="hidden" name="study_anyway" value="{{ '1' if study_anyway else '0' }}">
+    <label class="field">
+      <span class="label">Invite</span>
+      <textarea name="invite">{{ proposal.invite }}</textarea>
+    </label>
+    <p class="hint">{{ proposal.people[0].first_name }}{% if proposal.people|length > 1 %} and {{ proposal.people|length - 1 }} more{% endif %} · {{ when }} · {{ proposal.place.name }}</p>
+    <div class="cluster">
+      <button class="button quiet" type="submit" formaction="/session/swap-person">Swap person</button>
+      <button class="button quiet" type="submit" formaction="/session/swap-place">Swap place</button>
+      <a class="button quiet" href="/session?discarded=1">Discard</a>
+      <button class="button primary" type="submit" formaction="/session/confirm">Approve</button>
+    </div>
+  </form>
+  {% else %}
+  <label class="field">
+    <span class="label">Invite</span>
+    <textarea readonly>{{ proposal.invite }}</textarea>
+  </label>
+  <p class="hint">{{ proposal.people[0].first_name }} · {{ when }} · {{ proposal.place.name }}</p>
+  <div class="cluster">
+    <button class="button quiet" type="button">Swap person</button>
+    <button class="button quiet" type="button">Swap place</button>
+    <button class="button quiet" type="button">Discard</button>
+    <button class="button primary" type="button">Approve</button>
+  </div>
+  {% endif %}
+</article>

@@ -9,6 +9,7 @@ from app.format import pretty_range
 from app.omnara_client import OmnaraError, interpret_request
 from app.profile_core import PLACE_LABELS, public_profile
 from app.web import render
+from app.scheduling.session_hooks import refresh_before_request, export_card
 
 router = APIRouter()
 
@@ -115,7 +116,7 @@ def _session_context(
         "conflict": conflict,
         "conflict_when": pretty_range(starts_at, ends_at) if conflict else "",
         "alternative_label": pretty_range(conflict["alternative_start"], conflict["alternative_end"])
-        if conflict
+        if conflict and conflict.get("alternative_start")
         else "",
         "alternative_href": "/session?"
         + _query(
@@ -127,7 +128,7 @@ def _session_context(
             False,
             sentence,
         )
-        if conflict
+        if conflict and conflict.get("alternative_start")
         else "",
         "anyway_href": "/session?" + _query(course["id"], starts_at, ends_at, place_type, note, True, sentence),
         "proposal": proposal,
@@ -161,6 +162,7 @@ def _form_only(request: Request, sentence: str, error: str = "", notice: str = "
         study_anyway=False,
         error=error,
         notice=notice,
+        calendar_export=export_card(request),
         conflict=None,
         proposal=None,
         when="",
@@ -192,7 +194,7 @@ def session_page(
         context["proposal"] = None
         context["conflict"] = None
         notice = notice or "Request discarded. Nothing was sent."
-    return render(request, "session.html", nav="session", notice=notice, **context)
+    return render(request, "session.html", nav="session", notice=notice, calendar_export=export_card(request), **context)
 
 
 @router.post("/session/interpret")
@@ -202,6 +204,7 @@ def interpret(request: Request, sentence: str = Form("")):
         return _form_only(request, "", error="Write what you want to study.")
     courses = _profile_courses() or store.courses()
     try:
+        refresh_before_request(request)
         parsed = _parsed(interpret_request(text, courses), courses)
     except (OmnaraError, ValueError) as exc:
         return _form_only(request, text, error=str(exc))
@@ -283,6 +286,7 @@ def swap_place(
 
 @router.post("/session/confirm")
 def confirm_invite(
+    request: Request,
     course_id: str = Form(...),
     starts_at: str = Form(...),
     ends_at: str = Form(...),
@@ -294,6 +298,7 @@ def confirm_invite(
 ):
     course = _course_record(course_id)
     try:
+        refresh_before_request(request)
         conflict = schedule_core.own_conflict(starts_at, ends_at, study_anyway == "1")
     except ValueError:
         conflict = {"title": "That time"}
@@ -305,7 +310,7 @@ def confirm_invite(
             place_type,
             note,
             study_anyway,
-            "Pick another time, or study anyway, before sending.",
+            "Pick a conflict-free time before sending.",
             sentence=sentence,
         )
     store.set_invite_text(invite)
@@ -356,10 +361,7 @@ def add_to_calendar(
     study_anyway: str = Form("1"),
     sentence: str = Form(""),
 ):
-    if store.write_calendar_event():
-        notice = "Saved to the organizer's calendar in this demo. Google write is not connected."
-    else:
-        notice = "Everyone has to accept before the session goes on the calendar."
+    notice = "Calendar export is disabled. Authoritative session revision, acceptances and separate organizer approval are required. No calendar was written."
     return _redirect_session(
         course_id, starts_at, ends_at, place_type, note, study_anyway, notice, sentence=sentence
     )

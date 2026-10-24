@@ -17,6 +17,10 @@ from app.format import pretty_range
 from app.profile_core import PLACE_LABELS, STYLE_LABELS, eligible_student_ids, public_profile, public_profile_of
 from app.schedule_core import BLOCKING_SOURCES, DAYS, list_busy_for_match, list_exams, weekly_hours
 from app.store import courses, generated_drafts, invite_text, places, remember_draft, swaps_for
+from app.schedule_core import matching_free_time
+from app.scheduling.time import parse_instant, local_input, display_zone
+from app.scheduling.fixture_math import free_time as fixture_free_time
+from zoneinfo import ZoneInfo
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +67,7 @@ class Person:
     weekly: dict[str, tuple[str, str]]
     busy: list[MatchBusyInterval]
     exams: list[Exam]
+    schedule_reader: object | None = None
 
     @property
     def first_name(self) -> str:
@@ -106,11 +111,11 @@ class MatchResult:
 
 
 def _parse(value: str) -> datetime:
-    return datetime.fromisoformat(value)
+    return parse_instant(value)
 
 
 def _iso(value: datetime) -> str:
-    return value.isoformat(timespec="minutes")
+    return local_input(value)
 
 
 # Intervals
@@ -177,20 +182,9 @@ def _blocks(person: Person) -> list[Interval]:
 
 def free_time(person: Person, start: datetime, end: datetime) -> list[Interval]:
     """Weekly hours plus free one-offs, minus exams, calendar events, and busy one-offs."""
-    open_hours = []
-    day = start.date()
-    while day <= end.date():
-        begin, finish = person.weekly.get(DAYS[day.weekday()], ("", ""))
-        if begin and finish:
-            open_hours.append(
-                (datetime.combine(day, time.fromisoformat(begin)), datetime.combine(day, time.fromisoformat(finish)))
-            )
-        day += timedelta(days=1)
-    open_hours += [
-        (_parse(block.starts_at), _parse(block.ends_at)) for block in person.busy if block.kind == "free"
-    ]
-    window = _intersect(_merge(open_hours), [(start, end)])
-    return _subtract(window, _blocks(person))
+    if person.schedule_reader is not None:
+        return person.schedule_reader(start, end)
+    return fixture_free_time(person.weekly, person.busy, person.exams, start, end)
 
 
 # Distance
@@ -253,6 +247,9 @@ def _clock(hour: str, minute: str | None, meridiem: str | None) -> time | None:
 
 
 def _note_time(text: str, start: datetime, end: datetime) -> tuple[datetime, datetime] | None:
+    original_start, original_end = start, end
+    start = start.astimezone(ZoneInfo(display_zone()))
+    end = end.astimezone(ZoneInfo(display_zone()))
     day = start.date()
     weekday = WEEKDAY.search(text)
     if weekday:
@@ -276,8 +273,9 @@ def _note_time(text: str, start: datetime, end: datetime) -> tuple[datetime, dat
             at = _clock(hour, minute, meridiem)
             if at:
                 new_start = datetime.combine(day, at)
-                new_end = new_start + (end - start)
-    if (new_start, new_end) == (start, end):
+                new_end = new_start + (original_end - original_start)
+    new_start, new_end = parse_instant(new_start), parse_instant(new_end)
+    if (new_start, new_end) == (original_start, original_end):
         return None
     return new_start, new_end
 
@@ -395,7 +393,7 @@ def find_matches(request: StudyRequest, inputs: Inputs) -> tuple[list[Candidate]
         if _between(me.profile, person.profile) <= me.profile.radius_meters + person.profile.radius_meters
     ]
 
-    mine = [(start, end)] if request.study_anyway else _subtract([(start, end)], _blocks(me))
+    mine = free_time(me, start, end)
     ranked = []
     for person in reach:
         free = _intersect(mine, free_time(person, start, end))
@@ -457,6 +455,7 @@ def pick_group(ranked: list[Candidate], needed: int, min_len: timedelta, earlies
 
 
 def _is_open(place: dict, start: datetime, end: datetime) -> bool:
+    start, end = start.astimezone(ZoneInfo(display_zone())), end.astimezone(ZoneInfo(display_zone()))
     if "opens" not in place:
         return True
     if start.date() != end.date():
@@ -580,14 +579,16 @@ def _invite(request: StudyRequest, people: list[Person], window: Interval, place
 
 
 def load_inputs() -> Inputs:
-    me = Person(public_profile(), weekly_hours(), list_busy_for_match(), list_exams())
+    me = Person(public_profile(), weekly_hours(), list_busy_for_match(), list_exams(),
+                lambda start, end: matching_free_time(public_profile().id, start, end))
     eligible = eligible_student_ids()
     people = []
     for student_id in eligible:
         profile = public_profile_of(student_id)
         if profile:
             people.append(
-                Person(profile, weekly_hours(student_id), list_busy_for_match(student_id), list_exams(student_id))
+                Person(profile, weekly_hours(student_id), list_busy_for_match(student_id), list_exams(student_id),
+                       lambda start, end, sid=student_id: matching_free_time(sid, start, end))
             )
     return Inputs(me=me, people=people, eligible_ids=eligible)
 
@@ -596,18 +597,24 @@ def match(request: StudyRequest, inputs: Inputs | None = None, swap_person: int 
     """Interpret the note, score, pick the group and the place, and draft the copy."""
     inputs = inputs or load_inputs()
     me = inputs.me
-    start, end = _parse(request.starts_at), _parse(request.ends_at)
+    try:
+        start, end = _parse(request.starts_at), _parse(request.ends_at)
+    except ValueError:
+        raise NoMatch("Enter valid local times and resolve any DST ambiguity.") from None
     if end <= start:
         raise NoMatch("The session has to end after it starts.")
-    note = read_note(request.note, request.place_type, me.profile.place_types, start, end)
+    try:
+        note = read_note(request.note, request.place_type, me.profile.place_types, start, end)
+    except ValueError:
+        raise NoMatch("The note resolves to an invalid or ambiguous local time. Choose an explicit time.") from None
     request = request.model_copy(update={"place_type": note.place_type, "note": request.note[:NOTE_LIMIT]})
     if note.starts_at and note.ends_at:
         request = request.model_copy(update={"starts_at": _iso(note.starts_at), "ends_at": _iso(note.ends_at)})
         start, end = note.starts_at, note.ends_at
-        if not request.study_anyway and _intersect([(start, end)], _blocks(me)):
+        if _intersect([(start, end)], _blocks(me)):
             raise NoMatch(
                 f"Your note moves the session to {pretty_range(request.starts_at, request.ends_at)}, "
-                "which overlaps your own busy time. Pick another time or choose study anyway."
+                "which overlaps your own busy time. Pick another time."
             )
 
     ranked, funnel, later, message = find_matches(request, inputs)

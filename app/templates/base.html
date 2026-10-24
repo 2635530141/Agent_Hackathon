@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}StudyMate{% endblock %}</title>
   <link rel="stylesheet" href="/static/styles.css">
+  {% block feature_styles %}{% endblock %}
 </head>
 <body>
   <header class="site-header">
@@ -34,5 +35,6 @@
   <main class="page">
     {% block content %}{% endblock %}
   </main>
+  {% block feature_scripts %}{% endblock %}
 </body>
 </html>

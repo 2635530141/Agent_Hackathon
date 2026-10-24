@@ -124,7 +124,7 @@
       <form method="post" action="/schedule/calendar">
         <button class="button" type="submit">Connect Google Calendar</button>
       </form>
-      <form method="post" action="/schedule/calendar/refresh"><button class="button quiet" type="submit">Refresh synthetic snapshot</button></form>
+      <form method="post" action="/schedule/calendar/refresh"><input type="hidden" name="day" value="{{ selected_day }}"><button class="button quiet" type="submit">Refresh synthetic snapshot</button></form>
       <ul class="busy-list">
         {% for block in blocks %}
         <li class="busy-row">

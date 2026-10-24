@@ -165,14 +165,15 @@ def test_group_size_is_soft():
     assert both.candidates[1].parts["group"] == 0.0
 
 
-def test_e8_outdoor_at_night_falls_back_to_an_open_place():
+def test_e8_outdoor_at_night_requires_permission_instead_of_infeasible_place():
     late = {"tue": ("21:00", "23:00")}
     pair = inputs(person("u_me", "Maya Chen", weekly=late), person("u_a", "Alex Kim", weekly=late))
     open_late = m.match(request(starts_at="2026-10-27T21:00", ends_at="2026-10-27T22:00", place_type="outdoor"), pair)
-    assert open_late.proposal.place.name == "Doe Library"
-    assert "No outdoor spot fits" in open_late.proposal.reason
+    assert open_late.proposal is None
+    assert "No feasible place" in open_late.message
     all_closed = m.match(request(starts_at="2026-10-27T22:00", ends_at="2026-10-27T23:00", place_type="outdoor"), pair)
-    assert "Nothing on the list is open for the whole session" in all_closed.proposal.reason
+    assert all_closed.proposal is None
+    assert "No feasible place" in all_closed.message
 
 
 def test_e11_note_time_wins():

@@ -1,4 +1,6 @@
 # Agent_Hackathon
+
+Current implementation notes: [Calendar and timetable](docs/calendar-writeback-handoff.md) and [four-tool Omnara upgrade](docs/agentic-upgrade.md). Calendar-only PR #3 is merged into main; the Agent upgrade is reviewed separately. Synthetic tests are not live Google/Omnara verification.
 StudyMate Agent PRD
 v1, finalized for the hackathon build. October 24, 2026. Working name, see §12.
 1. Overview
@@ -394,6 +396,8 @@ After both accept, show a confirm button that adds the session to the organizer'
 Build the card against a fake proposal and a fake busy block first. Wire it to matching and Google last.
 
 ## Skeleton
+
+The bounded planning loop is available at `/agent`: clarification, read-only tools, approval recheck and conflict replanning. See [scope, tools, setup and evaluation](docs/agent-loop.md). Local rule demo and Omnara mode are explicitly distinguished; no live model, email or calendar write is implied.
 
 Shared app shell and visual system. Feature tracks fill in their own pages. The style catalog is the source of truth for UI.
 

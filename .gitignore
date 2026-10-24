@@ -211,6 +211,7 @@ tempCodeRunnerFile.py
 *.sqlite*
 .env.*
 !.env.calendar.example
+!.env.agent.example
 /secrets/
 client_secret*.json
 credentials*.json

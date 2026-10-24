@@ -5,7 +5,9 @@
 <div class="stack-lg">
   <div class="stack">
     <h1 class="title">New session</h1>
-    <p class="lede">Write the session in a sentence. Omnara turns it into a course, a time, and a place. Matching finds the students. You approve the invite here. Each invited student accepts on their own link.</p>
+    <p><a href="/agent">Try the agent: clarify requirements, inspect tool evidence, and replan after a conflict.</a></p>
+    <p class="lede">Describe a study session. Check saved schedules and feasible places, review the proposal, then confirm the exact revision.</p>
+    <p class="hint">Synthetic student and place data. Google and real email execution remain disabled.</p>
   </div>
   {% if error %}
   <div class="callout warn"><p>{{ error }}</p></div>
@@ -15,14 +17,30 @@
   {% endif %}
 
   <form method="post" action="/session/interpret" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ request.session.get('agent_csrf','') }}">
     <label class="field">
       <span class="label">What do you want to study?</span>
       <textarea name="sentence" placeholder="I want to study CS 61A on Thursday evening, not a library." required>{{ sentence }}</textarea>
     </label>
+    <label class="field"><span class="label">Mode</span><select name="mode">
+      <option value="basic">Basic — deterministic, no model</option>
+      <option value="omnara">Agentic — real Omnara, requires configuration</option>
+      <option value="demo">Synthetic/test — rule-based model substitute</option>
+    </select></label>
     <div class="cluster">
       <button class="button primary" type="submit">Find a study mate</button>
     </div>
   </form>
+  <details class="card stack"><summary>Manual form · available without Omnara</summary>
+    <form method="get" action="/session" class="stack">
+      <input type="hidden" name="ready" value="1">
+      <label class="field">Course<select name="course_id">{% for c in courses %}<option value="{{ c.id }}">{{ c.code }}</option>{% endfor %}</select></label>
+      <label class="field">Starts<input name="starts_at" type="datetime-local" required></label>
+      <label class="field">Ends<input name="ends_at" type="datetime-local" required></label>
+      <label class="field">Place<select name="place_type">{% for kind,label in place_labels.items() %}<option value="{{ kind }}">{{ label }}</option>{% endfor %}</select></label>
+      <button type="submit" class="button">Check manually</button>
+    </form>
+  </details>
 
   {% if ready %}
   <dl class="facts">

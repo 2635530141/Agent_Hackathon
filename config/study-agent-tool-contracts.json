@@ -1,0 +1,561 @@
+{
+  "get_profile": {
+    "permission": "read_only_authenticated_request",
+    "limit_per_request": 1,
+    "timeout_seconds": 1,
+    "input": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "Empty",
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "course_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Course Ids",
+          "type": "array"
+        },
+        "study_style": {
+          "enum": [
+            "quiet",
+            "talk",
+            "drill"
+          ],
+          "title": "Study Style",
+          "type": "string"
+        },
+        "group_size": {
+          "enum": [
+            2,
+            3,
+            4
+          ],
+          "title": "Group Size",
+          "type": "integer"
+        },
+        "place_types": {
+          "items": {
+            "enum": [
+              "coffee",
+              "library",
+              "outdoor"
+            ],
+            "type": "string"
+          },
+          "title": "Place Types",
+          "type": "array"
+        }
+      },
+      "required": [
+        "course_ids",
+        "study_style",
+        "group_size",
+        "place_types"
+      ],
+      "title": "ProfileOutput",
+      "type": "object"
+    }
+  },
+  "find_matches": {
+    "permission": "read_only_authenticated_request",
+    "limit_per_request": 2,
+    "timeout_seconds": 2,
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "exclude_candidate_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Exclude Candidate Ids",
+          "type": "array"
+        },
+        "not_before": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Not Before"
+        }
+      },
+      "title": "MatchArguments",
+      "type": "object"
+    },
+    "output": {
+      "$defs": {
+        "AlternativeOutput": {
+          "additionalProperties": false,
+          "properties": {
+            "candidate_id": {
+              "title": "Candidate Id",
+              "type": "string"
+            },
+            "first_name": {
+              "title": "First Name",
+              "type": "string"
+            },
+            "starts_at": {
+              "title": "Starts At",
+              "type": "string"
+            },
+            "ends_at": {
+              "title": "Ends At",
+              "type": "string"
+            },
+            "duration_minutes": {
+              "title": "Duration Minutes",
+              "type": "integer"
+            },
+            "requires_user_permission": {
+              "const": true,
+              "title": "Requires User Permission",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "candidate_id",
+            "first_name",
+            "starts_at",
+            "ends_at",
+            "duration_minutes",
+            "requires_user_permission"
+          ],
+          "title": "AlternativeOutput",
+          "type": "object"
+        },
+        "CandidateOutput": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "first_name": {
+              "title": "First Name",
+              "type": "string"
+            },
+            "year": {
+              "title": "Year",
+              "type": "integer"
+            },
+            "major": {
+              "title": "Major",
+              "type": "string"
+            },
+            "shared_course": {
+              "title": "Shared Course",
+              "type": "string"
+            },
+            "score": {
+              "title": "Score",
+              "type": "number"
+            },
+            "score_parts": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "title": "Score Parts",
+              "type": "object"
+            },
+            "slots": {
+              "items": {
+                "$ref": "#/$defs/SafeSlot"
+              },
+              "title": "Slots",
+              "type": "array"
+            },
+            "data_version": {
+              "$ref": "#/$defs/DataVersion"
+            }
+          },
+          "required": [
+            "id",
+            "first_name",
+            "year",
+            "major",
+            "shared_course",
+            "score",
+            "score_parts",
+            "slots",
+            "data_version"
+          ],
+          "title": "CandidateOutput",
+          "type": "object"
+        },
+        "DataVersion": {
+          "additionalProperties": false,
+          "properties": {
+            "schedule": {
+              "title": "Schedule",
+              "type": "integer"
+            },
+            "calendar": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Calendar"
+            },
+            "verification": {
+              "title": "Verification",
+              "type": "string"
+            }
+          },
+          "required": [
+            "schedule",
+            "calendar",
+            "verification"
+          ],
+          "title": "DataVersion",
+          "type": "object"
+        },
+        "SafeSlot": {
+          "additionalProperties": false,
+          "properties": {
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "end": {
+              "title": "End",
+              "type": "string"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "title": "SafeSlot",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/CandidateOutput"
+          },
+          "title": "Candidates",
+          "type": "array"
+        },
+        "group_size": {
+          "enum": [
+            2,
+            3,
+            4
+          ],
+          "title": "Group Size",
+          "type": "integer"
+        },
+        "duration_minutes": {
+          "title": "Duration Minutes",
+          "type": "integer"
+        },
+        "source": {
+          "const": "saved_sanitized_schedules",
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "no_match"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "request_revision": {
+          "title": "Request Revision",
+          "type": "integer"
+        },
+        "request_version": {
+          "title": "Request Version",
+          "type": "string"
+        },
+        "alternatives": {
+          "items": {
+            "$ref": "#/$defs/AlternativeOutput"
+          },
+          "title": "Alternatives",
+          "type": "array"
+        },
+        "next": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next"
+        }
+      },
+      "required": [
+        "candidates",
+        "group_size",
+        "duration_minutes",
+        "source",
+        "status",
+        "request_revision",
+        "request_version"
+      ],
+      "title": "MatchOutput",
+      "type": "object"
+    }
+  },
+  "suggest_places": {
+    "permission": "read_only_authenticated_request",
+    "limit_per_request": 2,
+    "timeout_seconds": 1,
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Candidate Ids",
+          "type": "array"
+        },
+        "starts_at": {
+          "maxLength": 40,
+          "title": "Starts At",
+          "type": "string"
+        },
+        "place_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "coffee",
+                "library",
+                "outdoor"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Place Type"
+        }
+      },
+      "required": [
+        "candidate_ids",
+        "starts_at"
+      ],
+      "title": "PlaceArguments",
+      "type": "object"
+    },
+    "output": {
+      "$defs": {
+        "PlaceOutput": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "address": {
+              "title": "Address",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "coffee",
+                "library",
+                "outdoor"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "hours": {
+              "title": "Hours",
+              "type": "string"
+            },
+            "rating": {
+              "title": "Rating",
+              "type": "string"
+            },
+            "map_url": {
+              "title": "Map Url",
+              "type": "string"
+            },
+            "walk_minutes": {
+              "title": "Walk Minutes",
+              "type": "integer"
+            },
+            "source": {
+              "const": "seeded_fixture",
+              "title": "Source",
+              "type": "string"
+            },
+            "live_verified": {
+              "const": false,
+              "title": "Live Verified",
+              "type": "boolean"
+            },
+            "hours_verification": {
+              "enum": [
+                "synthetic",
+                "unknown"
+              ],
+              "title": "Hours Verification",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "address",
+            "kind",
+            "hours",
+            "rating",
+            "map_url",
+            "walk_minutes",
+            "source",
+            "live_verified",
+            "hours_verification"
+          ],
+          "title": "PlaceOutput",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "no_feasible_place"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "places": {
+          "items": {
+            "$ref": "#/$defs/PlaceOutput"
+          },
+          "title": "Places",
+          "type": "array"
+        },
+        "hours_verification": {
+          "enum": [
+            "synthetic",
+            "unknown"
+          ],
+          "title": "Hours Verification",
+          "type": "string"
+        },
+        "source": {
+          "const": "seeded_fixture",
+          "title": "Source",
+          "type": "string"
+        },
+        "live_verified": {
+          "const": false,
+          "title": "Live Verified",
+          "type": "boolean"
+        },
+        "request_version": {
+          "title": "Request Version",
+          "type": "string"
+        },
+        "notice": {
+          "title": "Notice",
+          "type": "string"
+        },
+        "next": {
+          "title": "Next",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "places",
+        "hours_verification",
+        "source",
+        "live_verified",
+        "request_version",
+        "notice",
+        "next"
+      ],
+      "title": "PlacesOutput",
+      "type": "object"
+    }
+  },
+  "check_booking": {
+    "permission": "read_only_authenticated_request",
+    "limit_per_request": 1,
+    "timeout_seconds": 1,
+    "input": {
+      "additionalProperties": false,
+      "properties": {
+        "place_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Place Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "place_id"
+      ],
+      "title": "BookingArguments",
+      "type": "object"
+    },
+    "output": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "unsupported",
+          "title": "Status",
+          "type": "string"
+        },
+        "place_id": {
+          "title": "Place Id",
+          "type": "string"
+        },
+        "reserved": {
+          "const": false,
+          "title": "Reserved",
+          "type": "boolean"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "place_id",
+        "reserved",
+        "reason"
+      ],
+      "title": "BookingOutput",
+      "type": "object"
+    }
+  }
+}

@@ -5,6 +5,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.routers import matching, pages, profile, schedule, session
 from app.routers import calendar_google
+from app.routers import agent
 from app.routers import calendar_exports
 from app.routers import calendar_editor
 from app.web import BASE
@@ -17,6 +18,7 @@ app.include_router(schedule.router)
 app.include_router(matching.router)
 app.include_router(session.router)
 app.include_router(calendar_google.router)
+app.include_router(agent.router)
 app.include_router(calendar_exports.router)
 app.include_router(calendar_editor.router)
 app.include_router(calendar_editor.form_router)

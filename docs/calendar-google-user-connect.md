@@ -8,6 +8,41 @@ The team's Web OAuth client is configured once on the host and kept out of Git.
 
 ## Run it
 
+### Windows one-click local test
+
+This launcher is for developers/host operators. Ordinary users never need an OAuth
+JSON or API key: the team configures one shared host, then each user signs in and
+consents separately. The local loopback preview below is not a public shared host.
+
+Open `Start-Calendar.cmd` in the checkout. Python 3.12+ with the Windows launcher
+is required; the script creates a missing `.venv` and installs pinned requirements
+when the runtime dependencies are absent. Select a **Web application OAuth JSON**
+obtained privately from the team administrator. The default port is 8017.
+The selected file stays in place; only its local path is remembered under ignored
+`data/private-calendar/`. Secrets are never copied into Git or sent to the browser.
+On the private login page, create an account, then Connect Google Calendar.
+
+The launcher checks client type, exact registered callback, occupied port and
+missing keys for an existing database. Failure is explicit; it never substitutes
+synthetic calendar data or replaces keys. The original demo command below keeps
+its existing behavior. Non-Windows/headless operators can use
+`python -m app.calendar_start --client-file /private/google-web-client.json`.
+`--check` prints sanitized readiness without making a Google request or changing
+the database. `STUDYMATE_GOOGLE_CLIENT_FILE` and
+`STUDYMATE_CALENDAR_PRIVATE_DIR` are optional environment overrides.
+
+### Google-side prerequisites
+
+Local readiness cannot verify Google's permissions. Calendar API must be enabled,
+the callback must match the OAuth client exactly, and each consenting account must
+have test-user eligibility while the app is in Testing. School administrators may
+also restrict third-party apps. A missing client file is a host setup issue;
+`redirect_uri_mismatch` is an exact-callback issue; `access_denied`/403 requires
+checking the account, Google consent settings and school policy. Never resolve
+these errors by sharing someone's refresh token or committing credentials.
+
+### Manual startup
+
 Python 3.13.5 was used. In PowerShell from the repository:
 
 ```powershell
@@ -132,6 +167,24 @@ gated by authoritative Session data and explicit organizer confirmation.
 Postgres, public deployment, real Session acceptance/export, writes/deletes and
 cross-user production Matching remain unverified. Conservative exam and
 override/group policies remain proposed; this change does not approve them.
+
+## Team launcher verification (2026-10-24)
+
+`..\Agent_Hackathon\.venv\Scripts\python.exe -m pytest -q --basetemp=.tmp/team-start-verified -o faulthandler_timeout=45`
+completed with **234 passed, 2 dependency deprecation warnings, 21.30s**. Eighteen
+new checks cover readiness diagnostics, client selection precedence, redaction,
+missing keys, occupied ports, callback mismatch, cancellation and the help page.
+The Windows wrapper's `--check` path was also executed using the installed test
+venv; it correctly reported an occupied port without stopping the other service.
+Fresh Windows dependency installation and native file-picker interaction have
+not been tested on a teammate's computer.
+
+The new `app.calendar_start` entry was actually started on 8011 with the existing
+private runtime and the consenting owner's Google configuration. A browser
+refresh completed a real Google read and advanced Last sync to
+2026-10-24 23:13:28 UTC, with approximately 1.7s click-to-render time. This is a
+single observed run, not a latency guarantee or a teammate-account verification.
+Only safe status/coverage metadata was retained; no Google write/delete occurred.
 
 References: [Google server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server),
 [Calendar authorization](https://developers.google.com/workspace/calendar/api/auth),

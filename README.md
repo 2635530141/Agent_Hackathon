@@ -6,6 +6,15 @@ user preview with Connect, Refresh and Disconnect. See
 for install/start/test commands. OAuth credentials and personal schedules are
 not in Git; the regular demo remains synthetic.
 
+For a developer/host-operator Google test on Windows, open **Start-Calendar.cmd**. It prepares the
+local environment if needed, asks you to select the team's private Web OAuth JSON,
+checks local configuration, and opens the private login page on port 8017. Each
+user creates a private local account and consents in Google. The Google project
+administrator grants test-user eligibility while the app is in Testing.
+Pulling source alone does not activate credentials or Google permissions.
+Ordinary users authorize their own account; they do not need OAuth JSON or API
+keys. A shared deployed host must be configured once by the team administrator.
+
 StudyMate Agent PRD
 v1, finalized for the hackathon build. October 24, 2026. Working name, see §12.
 1. Overview

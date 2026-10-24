@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from app.routers import matching, pages, profile, schedule, session
 from app.web import BASE
 
-app = FastAPI(title="Study mate")
+app = FastAPI(title="StudyMate")
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 app.include_router(pages.router)
 app.include_router(profile.router)

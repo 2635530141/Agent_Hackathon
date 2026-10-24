@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Session · Study mate{% endblock %}
+{% block title %}Session · StudyMate{% endblock %}
 {% block content %}
 <div class="stack-lg">
   <div class="stack">
@@ -45,7 +45,7 @@
       <textarea name="note" placeholder="Not a library.">{{ note }}</textarea>
     </label>
     <div class="cluster">
-      <button class="button primary" type="submit">Check this time</button>
+      <button class="button primary" type="submit">Find a study mate</button>
     </div>
   </form>
 
@@ -56,13 +56,19 @@
   {% endif %}
 
   {% if proposal %}
+  <ol class="steps" aria-label="Progress">
+    <li class="done">Understanding</li>
+    <li class="done">Matching</li>
+    <li class="done">Choosing a place</li>
+    <li class="current">Drafting</li>
+  </ol>
     {% with interactive=true %}
       {% include "partials/proposal.html" %}
     {% endwith %}
   {% endif %}
 
   {% if invitation.status == "pending" %}
-  <p class="hint">Waiting for the other student. The invite page is <a href="/invite/demo">/invite/demo</a>.</p>
+  <p class="hint">Invitation sent. The invited student can answer at <a href="/invite/demo">/invite/demo</a>.</p>
   {% elif invitation.status == "accepted" %}
   <div class="callout good">
     <p>They accepted {{ invitation.place_name }}.</p>

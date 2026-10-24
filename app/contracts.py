@@ -81,15 +81,21 @@ class StudyRequest(BaseModel):
 
 
 class ProposalPerson(BaseModel):
+    """Card copy is first name, year, major, and the shared course. No email."""
+
     id: str
-    name: str
-    detail: str
+    first_name: str
+    year: int
+    major: str
+    course_code: str
 
 
 class ProposalPlace(BaseModel):
     name: str
     address: str
     kind: PlaceType
+    hours: str
+    rating: str
     map_url: str
 
 

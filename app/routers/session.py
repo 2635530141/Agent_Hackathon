@@ -78,15 +78,20 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
 @router.get("/session")
 def session_page(
     request: Request,
-    course_id: str = "cs189",
+    course_id: str = "cs61a",
     starts_at: str = DEFAULT_START,
     ends_at: str = DEFAULT_END,
     place_type: str = "coffee",
     note: str = "",
     study_anyway: str = "0",
     notice: str = "",
+    discarded: str = "0",
 ):
     context = _session_context(course_id, starts_at, ends_at, place_type, note, study_anyway == "1")
+    if discarded == "1":
+        context["proposal"] = None
+        context["conflict"] = None
+        notice = notice or "Request discarded. Nothing was sent."
     return render(request, "session.html", nav="session", notice=notice, **context)
 
 
@@ -171,13 +176,13 @@ def confirm_invite(
         place_type,
         note,
         study_anyway,
-        "Invite saved. Nothing is emailed until an email provider is connected.",
+        "Invitation sent for this demo. Nothing is emailed until an email provider is connected.",
     )
 
 
 @router.post("/session/calendar")
 def add_to_calendar(
-    course_id: str = Form("cs189"),
+    course_id: str = Form("cs61a"),
     starts_at: str = Form(DEFAULT_START),
     ends_at: str = Form(DEFAULT_END),
     place_type: str = Form("coffee"),

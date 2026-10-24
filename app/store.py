@@ -1,13 +1,17 @@
-"""In-memory seed. Postgres replaces this module later. Do not import feature rules from here."""
+"""In-memory seed. Postgres replaces this module later.
+
+Target tables: students, courses, student_courses, availability_slots, exams,
+calendar_busy_intervals, requests, proposals, proposal_candidates, places_cache,
+invitations, feedback.
+"""
 
 from copy import deepcopy
 
 OWNER_ID = "u_maya"
 
 COURSES = [
-    {"id": "cs189", "code": "CS 189", "name": "Machine Learning"},
-    {"id": "cs188", "code": "CS 188", "name": "Introduction to Artificial Intelligence"},
-    {"id": "eecs16a", "code": "EECS 16A", "name": "Designing Information Devices and Systems"},
+    {"id": "cs61a", "code": "CS 61A", "name": "Structure and Interpretation of Computer Programs"},
+    {"id": "math54", "code": "Math 54", "name": "Linear Algebra and Differential Equations"},
 ]
 
 _owner = {
@@ -24,14 +28,14 @@ _owner = {
     "place_types": ["coffee", "library"],
     "major": "EECS",
     "year": 3,
-    "course_ids": ["cs189", "cs188"],
+    "course_ids": ["cs61a", "math54"],
     "gender_self": "",
     "gender_preference": "",
 }
 
 _others = [
-    {"id": "u_jordan", "name": "Jordan Lee", "detail": "EECS · year 3"},
-    {"id": "u_sam", "name": "Sam Patel", "detail": "Data Science · year 2"},
+    {"id": "u_jordan", "first_name": "Jordan", "year": 3, "major": "EECS"},
+    {"id": "u_sam", "first_name": "Sam", "year": 2, "major": "Mathematics"},
 ]
 
 _places = [
@@ -39,12 +43,24 @@ _places = [
         "name": "Yali's Cafe",
         "address": "1920 Oxford St",
         "kind": "coffee",
+        "hours": "Open until 9:00 PM",
+        "rating": "4.4",
         "map_url": "https://maps.google.com/?q=Yali%27s+Cafe+Berkeley",
+    },
+    {
+        "name": "Doe Library",
+        "address": "Campus",
+        "kind": "library",
+        "hours": "Open until 10:00 PM",
+        "rating": "4.6",
+        "map_url": "https://maps.google.com/?q=Doe+Library+Berkeley",
     },
     {
         "name": "Faculty Glade",
         "address": "Campus",
         "kind": "outdoor",
+        "hours": "Daylight hours",
+        "rating": "4.7",
         "map_url": "https://maps.google.com/?q=Faculty+Glade+Berkeley",
     },
 ]
@@ -62,7 +78,7 @@ _weekly = {
 _exams = [
     {
         "id": "exam_1",
-        "course_id": "cs189",
+        "course_id": "math54",
         "starts_at": "2026-11-06T09:00",
         "ends_at": "2026-11-06T12:00",
         "priority": True,
@@ -82,26 +98,26 @@ _busy = [
         "source": "calendar",
         "starts_at": "2026-10-29T18:00",
         "ends_at": "2026-10-29T19:00",
-        "title": "CS 189 lecture",
+        "title": "CS 61A lecture",
     },
     {
         "id": "exam_1",
         "source": "exam",
         "starts_at": "2026-11-06T09:00",
         "ends_at": "2026-11-06T12:00",
-        "title": "CS 189 midterm",
+        "title": "Math 54 exam",
     },
 ]
 
 _exceptions: list[dict] = []
 _person_index = 0
 _place_index = 0
-_invite = "Want to work through CS 189 problem sets at Yali's Cafe on Thursday at 7?"
+_invite = "Want to work through CS 61A problem sets at Yali's Cafe on Thursday at 7?"
 _invitation = {
     "id": "demo",
     "status": "draft",
     "calendar_written": False,
-    "course_id": "cs189",
+    "course_id": "cs61a",
     "starts_at": "2026-10-29T19:00",
     "ends_at": "2026-10-29T21:00",
     "place_name": "Yali's Cafe",

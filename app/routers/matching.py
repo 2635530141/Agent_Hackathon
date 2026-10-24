@@ -11,7 +11,7 @@ router = APIRouter()
 @router.get("/matching")
 def matching_page(request: Request):
     context = matching_core.match_context()
-    proposal = matching_core.build_proposal("CS 189", "2026-10-29T19:00", "2026-10-29T21:00", "coffee", "")
+    proposal = matching_core.build_proposal("CS 61A", "2026-10-29T19:00", "2026-10-29T21:00", "coffee", "")
     busy_rows = [
         {"when": pretty_range(block.starts_at, block.ends_at), "source": block.source, "kind": block.kind or "busy"}
         for block in context["busy"]
@@ -33,7 +33,7 @@ def matching_page(request: Request):
 @router.get("/api/match")
 def api_match():
     context = matching_core.match_context()
-    proposal = matching_core.build_proposal("CS 189", "2026-10-29T19:00", "2026-10-29T21:00", "coffee", "")
+    proposal = matching_core.build_proposal("CS 61A", "2026-10-29T19:00", "2026-10-29T21:00", "coffee", "")
     return {
         "profile": context["profile"],
         "eligible_ids": context["eligible_ids"],

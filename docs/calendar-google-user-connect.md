@@ -186,6 +186,13 @@ refresh completed a real Google read and advanced Last sync to
 single observed run, not a latency guarantee or a teammate-account verification.
 Only safe status/coverage metadata was retained; no Google write/delete occurred.
 
+Before publication, main advanced to `5427e58` with teammates' new room matching
+and requested-time boundary behavior. Those commits were merged without conflict.
+The complete combined run passed **271 tests**, with 2 dependency deprecation
+warnings, in **26.65s** using `--basetemp=.tmp/team-latest-main-verified`.
+This patch does not expose the loopback preview publicly, alter the Google Cloud
+audience, or claim to have tested an unknown teammate's account or machine.
+
 References: [Google server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server),
 [Calendar authorization](https://developers.google.com/workspace/calendar/api/auth),
 [OAuth consent configuration](https://developers.google.com/workspace/guides/configure-oauth-consent).

@@ -204,6 +204,19 @@ cython_debug/
 # .vscode/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
+.tmp/
+/data/
+*.db
+*.db-*
+*.sqlite*
+.env.*
+!.env.calendar.example
+/secrets/
+client_secret*.json
+credentials*.json
+token*.json
+*.pem
+*.key
 
 # Ruff stuff:
 .ruff_cache/

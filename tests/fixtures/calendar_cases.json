@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "status": "Test design only; not executed application tests. Codex must implement these assertions.",
+  "cases": [
+    {
+      "id": "C01",
+      "name": "Subtract calendar and exam",
+      "prd_reference_or_proposed_rule": "Appendix B Schedule",
+      "kind": "unit",
+      "given": {
+        "local_date": "2026-10-26",
+        "timezone": "America/Los_Angeles",
+        "free": [
+          [
+            "13:00",
+            "18:00"
+          ]
+        ],
+        "google_busy": [
+          [
+            "14:00",
+            "15:00"
+          ]
+        ],
+        "exam_busy": [
+          [
+            "16:00",
+            "17:00"
+          ]
+        ]
+      },
+      "expected": {
+        "free": [
+          [
+            "13:00",
+            "14:00"
+          ],
+          [
+            "15:00",
+            "16:00"
+          ],
+          [
+            "17:00",
+            "18:00"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C02",
+      "name": "Half-open boundary",
+      "prd_reference_or_proposed_rule": "Proposed interval convention",
+      "kind": "unit",
+      "given": {
+        "free": [
+          [
+            "13:00",
+            "14:00"
+          ]
+        ],
+        "busy": [
+          [
+            "14:00",
+            "15:00"
+          ]
+        ]
+      },
+      "expected": {
+        "free": [
+          [
+            "13:00",
+            "14:00"
+          ]
+        ],
+        "conflict": false
+      }
+    },
+    {
+      "id": "C03",
+      "name": "Busy overrides one-off available",
+      "prd_reference_or_proposed_rule": "Appendix B + proposed precedence",
+      "kind": "unit",
+      "given": {
+        "weekly": [
+          [
+            "13:00",
+            "15:00"
+          ]
+        ],
+        "added": [
+          [
+            "15:00",
+            "18:00"
+          ]
+        ],
+        "unavailable": [
+          [
+            "16:00",
+            "17:00"
+          ]
+        ]
+      },
+      "expected": {
+        "free": [
+          [
+            "13:00",
+            "16:00"
+          ],
+          [
+            "17:00",
+            "18:00"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C04",
+      "name": "Priority does not grant free hours",
+      "prd_reference_or_proposed_rule": "\u00a75 Score / Appendix B",
+      "kind": "unit",
+      "given": {
+        "weekly": [],
+        "priority_window": "2026-10-24 to 2026-10-27"
+      },
+      "expected": {
+        "free": [],
+        "priority_metadata_retained": true
+      }
+    },
+    {
+      "id": "C15",
+      "name": "Weekly recurrence crosses DST",
+      "prd_reference_or_proposed_rule": "Proposed zone-aware recurrence",
+      "kind": "unit",
+      "given": {
+        "weekday": 6,
+        "local_start": "15:00",
+        "local_end": "16:00",
+        "timezone": "America/Los_Angeles",
+        "dates": [
+          "2026-10-25",
+          "2026-11-01"
+        ]
+      },
+      "expected": {
+        "utc_starts": [
+          "2026-10-25T22:00:00Z",
+          "2026-11-01T23:00:00Z"
+        ],
+        "local_hour_unchanged": true
+      }
+    },
+    {
+      "id": "C16",
+      "name": "Ambiguous/nonexistent local times",
+      "prd_reference_or_proposed_rule": "Proposed explicit DST policy",
+      "kind": "unit",
+      "given": {
+        "timezone": "America/Los_Angeles",
+        "ambiguous": "2026-11-01T01:30:00",
+        "nonexistent": "2026-03-08T02:30:00"
+      },
+      "expected": {
+        "no_silent_offset_guess": true,
+        "warning_or_explicit_resolution_required": true
+      }
+    },
+    {
+      "id": "C33",
+      "name": "Duration filter after subtraction",
+      "prd_reference_or_proposed_rule": "Proposed request-driven duration",
+      "kind": "unit",
+      "given": {
+        "remaining_free_minutes": [
+          30,
+          60,
+          90
+        ],
+        "requested_duration_minutes": 90
+      },
+      "expected": {
+        "eligible_intervals_minutes": [
+          90
+        ]
+      }
+    },
+    {
+      "id": "C34",
+      "name": "No schedule is not full-day free",
+      "prd_reference_or_proposed_rule": "E1 / proposed unknown availability",
+      "kind": "unit",
+      "given": {
+        "weekly_rules": [],
+        "one_off_available": []
+      },
+      "expected": {
+        "available": []
+      }
+    }
+  ]
+}

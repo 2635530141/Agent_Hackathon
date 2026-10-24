@@ -4,7 +4,8 @@
 <div class="stack-lg">
   <div class="stack">
     <h1 class="title">Schedule and calendar</h1>
-    <p class="lede">Shulun owns this page. Weekly hours are when you can study. Exams and calendar events block a session. Matching receives the blocks without titles.</p>
+    <p class="lede">Weekly hours are when you can study. Exams and busy events block a session. Matching reads the same saved schedule without titles.</p>
+    <div class="callout warn"><p>Synthetic calendar data only · {{ timezone }} · Local SQLite. Team sign-in and Postgres are not connected. This fixed demo identity cannot connect a real Google account.</p></div>
   </div>
   {% if error %}
   <div class="callout warn"><p>{{ error }}</p></div>
@@ -12,6 +13,15 @@
   {% if saved %}
   <div class="callout good"><p>Saved.</p></div>
   {% endif %}
+
+  <section class="card stack">
+    <h2>Effective availability</h2>
+    <form method="get" action="/schedule" class="cluster"><label class="field"><span class="label">Date ({{ timezone }})</span><input type="date" name="day" value="{{ selected_day }}"></label><button class="button" type="submit">View free time</button></form>
+    <p class="hint">Weekly + extra free − unavailable − exams − calendar − confirmed sessions.</p>
+    {% for row in free_rows %}<p class="chip">{{ row }}</p>{% else %}<p>No eligible free time. Unknown calendar status must be refreshed.</p>{% endfor %}
+    <p class="hint">{{ availability.calendar.verification_level }} · schedule version {{ availability.schedule_version }}</p>
+    {% for warning in availability.warnings %}<p class="hint">{{ warning }}</p>{% endfor %}
+  </section>
 
   <form method="post" action="/schedule/hours" class="card stack">
     <h2>Weekly hours</h2>
@@ -22,9 +32,11 @@
         <input type="time" name="{{ day }}_start" value="{{ weekly[day][0] }}" aria-label="{{ day_labels[day] }} start">
         <span class="hint">to</span>
         <input type="time" name="{{ day }}_end" value="{{ weekly[day][1] }}" aria-label="{{ day_labels[day] }} end">
+        <label class="choice"><input type="checkbox" name="{{ day }}_overnight" value="yes" {% if overnight.get(day) %}checked{% endif %}> Next day</label>
       </li>
       {% endfor %}
     </ul>
+    <p class="hint">Wall times use {{ timezone }}. Ambiguous or missing DST occurrences are excluded with a warning.</p>
     <div class="cluster"><button class="button primary" type="submit">Save hours</button></div>
   </form>
 
@@ -38,6 +50,15 @@
           <button class="button quiet" type="submit">Remove</button>
         </form>
       </li>
+      <li><details><summary>Edit {{ exam.course_code }} exam</summary>
+        <form method="post" action="/schedule/exams/{{ exam.id }}/edit" class="stack">
+          <input type="hidden" name="course_id" value="{{ exam.course_id }}">
+          <label class="field"><span class="label">Exam starts ({{ timezone }})</span><input type="datetime-local" name="starts_at" value="{{ exam.start_local }}" required></label>
+          <label class="field"><span class="label">Exam ends</span><input type="datetime-local" name="ends_at" value="{{ exam.end_local }}" required></label>
+          <label class="field"><span class="label">Priority starts (optional)</span><input type="datetime-local" name="priority_starts_at" value="{{ exam.priority_local }}"></label>
+          <button class="button" type="submit">Save exam changes</button>
+        </form>
+      </details></li>
       {% endfor %}
     </ul>
     <form method="post" action="/schedule/exams" class="stack">
@@ -59,10 +80,8 @@
           <input type="datetime-local" name="ends_at" value="2026-11-12T12:00">
         </label>
       </div>
-      <label class="choice">
-        <input type="checkbox" name="priority" value="yes" checked>
-        Mark the three days before as a priority window
-      </label>
+      <label class="field"><span class="label">Priority starts (optional, {{ timezone }})</span><input type="datetime-local" name="priority_starts_at"></label>
+      <p class="hint">Priority is ranking metadata only. Exams always block time; no default number of pre-exam days is assumed.</p>
       <div class="cluster"><button class="button" type="submit">Add exam</button></div>
     </form>
   </section>
@@ -93,15 +112,13 @@
 
   <section class="split">
     <div class="card stack">
-      <h2>Your busy times</h2>
+      <h2>Your time records</h2>
       <p class="hint">Titles stay on this page.</p>
-      {% if calendar.connected %}
-      <div class="callout good"><p>Calendar marked connected for this demo. Google is not reading a real account. Horizon: {{ calendar.horizon }}.</p></div>
-      {% else %}
+      <div class="callout warn"><p>{{ calendar.message }} Only the primary calendar will be checked when enabled.</p></div>
       <form method="post" action="/schedule/calendar">
         <button class="button" type="submit">Connect Google Calendar</button>
       </form>
-      {% endif %}
+      <form method="post" action="/schedule/calendar/refresh"><button class="button quiet" type="submit">Refresh synthetic snapshot</button></form>
       <ul class="busy-list">
         {% for block in blocks %}
         <li class="busy-row">
@@ -109,6 +126,11 @@
           <span class="chip">{{ block.source }}</span>
           <span class="meta">{{ block.title or "No title" }}{% if block.kind == "free" %} · free{% endif %}</span>
           {% if block.source == "exception" %}
+          <details><summary>Edit one-off slot</summary><form method="post" action="/schedule/exceptions/{{ block.id }}/edit" class="stack">
+            <label class="field"><span class="label">Starts</span><input type="datetime-local" name="starts_at" value="{{ block.start_local }}" required></label>
+            <label class="field"><span class="label">Ends</span><input type="datetime-local" name="ends_at" value="{{ block.end_local }}" required></label>
+            <label class="field"><span class="label">Kind</span><select name="kind"><option value="busy" {% if block.kind != "free" %}selected{% endif %}>Busy</option><option value="free" {% if block.kind == "free" %}selected{% endif %}>Extra free time</option></select></label><button class="button" type="submit">Save slot changes</button>
+          </form></details>
           <form method="post" action="/schedule/exceptions/{{ block.id }}/delete">
             <button class="button quiet" type="submit">Remove</button>
           </form>

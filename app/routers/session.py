@@ -64,7 +64,7 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
         "conflict": conflict,
         "conflict_when": pretty_range(starts_at, ends_at) if conflict else "",
         "alternative_label": pretty_range(conflict["alternative_start"], conflict["alternative_end"])
-        if conflict
+        if conflict and conflict.get("alternative_start")
         else "",
         "alternative_href": "/session?"
         + _query(
@@ -75,7 +75,7 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
             note,
             False,
         )
-        if conflict
+        if conflict and conflict.get("alternative_start")
         else "",
         "anyway_href": "/session?" + _query(course["id"], starts_at, ends_at, place_type, note, True),
         "proposal": proposal,
@@ -237,10 +237,7 @@ def add_to_calendar(
     note: str = Form(""),
     study_anyway: str = Form("1"),
 ):
-    if store.write_calendar_event():
-        notice = "Saved to the organizer's calendar in this demo. Google write is not connected."
-    else:
-        notice = "Everyone has to accept before the session goes on the calendar."
+    notice = "Calendar export is disabled. Authoritative session revision, acceptances and separate organizer approval are required. No calendar was written."
     return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, notice)
 
 

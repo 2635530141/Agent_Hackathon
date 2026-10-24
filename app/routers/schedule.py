@@ -129,7 +129,20 @@ def remove_exception(exception_id: str):
 
 
 @router.post("/schedule/calendar")
-def connect_calendar():
+def connect_calendar(request: Request):
+    # The existing entry point reaches M2 only after the host has independently
+    # supplied verified auth and an isolated live composition. Default demo stays off.
+    from app.scheduling.google_config import GoogleActor
+    from app.scheduling.google_integration import GoogleCalendarIntegration
+    from secrets import compare_digest
+    actor = getattr(request.state,"calendar_actor",None)
+    active = getattr(request.app.state,"google_calendar_integration",None)
+    if isinstance(actor,GoogleActor) and isinstance(active,GoogleCalendarIntegration):
+        csrf = request.headers.get("x-csrf-token","")
+        if not compare_digest(csrf.encode(),actor.csrf_token.encode()):
+            from fastapi import HTTPException
+            raise HTTPException(403,"CSRF_REQUIRED")
+        return RedirectResponse("/calendar/google/connect",status_code=303)
     return RedirectResponse("/schedule?error=Google+not+configured%3B+fixed+demo+identity+cannot+connect", status_code=303)
 
 

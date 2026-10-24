@@ -129,7 +129,7 @@ class PrivateEvent(BusyBlock):
 
 
 class ProviderSnapshot(Model):
-    provider_kind: Literal["fake"] = "fake"
+    provider_kind: Literal["fake", "google"] = "fake"
     coverage: Horizon
     busy: list[BusyBlock]
     private_events: list[PrivateEvent] = Field(default_factory=list, repr=False)
@@ -141,9 +141,9 @@ class Reservation(Interval):
 
 
 class CalendarStatus(Model):
-    provider_kind: Literal["fake", "none"] = "none"
+    provider_kind: Literal["fake", "google", "none"] = "none"
     connection_status: Literal["not_connected", "disconnected", "synced", "stale"] = "not_connected"
-    verification_level: Literal["synthetic", "manual_only", "unknown"] = "manual_only"
+    verification_level: Literal["synthetic", "manual_only", "google_current", "unknown"] = "manual_only"
     last_success_at: datetime | None = None
     coverage_start: datetime | None = None
     coverage_end: datetime | None = None
@@ -192,7 +192,7 @@ class ConflictDecision(Model):
     slot: Interval
     conflicts: list[SafeConflict]
     alternative_slot: Interval | None
-    calendar_verification_level: Literal["synthetic", "manual_only", "unknown"]
+    calendar_verification_level: Literal["synthetic", "manual_only", "google_current", "unknown"]
     schedule_version: int
     blocked: bool
     preview_only: Literal[True] = True

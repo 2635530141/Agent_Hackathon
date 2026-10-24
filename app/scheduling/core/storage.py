@@ -5,6 +5,7 @@ Postgres compatibility must be verified separately before integration.
 """
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import nullcontext
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -47,6 +48,7 @@ states = Table(
     Column("snapshot_version", Integer, nullable=False, default=0),
     Column("refresh_generation", Integer, nullable=False, default=0),
     Column("connection_status", String(24), nullable=False, default="not_connected"),
+    Column("provider_kind", String(16), nullable=False, default="fake"),
     Column("last_success_at", UTCDateTime),
     Column("coverage_start", UTCDateTime), Column("coverage_end", UTCDateTime),
 )
@@ -96,7 +98,7 @@ class SQLiteScheduleRepository:
         with self.engine.begin() as conn:
             existing = (conn.execute(select(versions.c.version)).scalars().all()
                         if inspect(conn).has_table("smcal_schema_version") else [])
-            if existing and existing != [1]:
+            if existing and existing not in ([1], [2]):
                 raise RuntimeError("unsupported calendar schema version")
             source = (Path(__file__).parent / "migrations" / "001_initial.sql").read_text(encoding="utf-8")
             source = "\n".join(line for line in source.splitlines() if not line.lstrip().startswith("--"))
@@ -105,6 +107,9 @@ class SQLiteScheduleRepository:
                     conn.exec_driver_sql(statement)
             if not existing:
                 conn.execute(insert(versions).values(version=1))
+            if existing != [2]:
+                conn.exec_driver_sql((Path(__file__).parent / "migrations" / "002_provider_kind.sql").read_text(encoding="utf-8"))
+                conn.execute(update(versions).values(version=2))
 
     def close(self):
         self.engine.dispose()
@@ -198,7 +203,7 @@ class SQLiteScheduleRepository:
         if snapshot.private_events:
             conn.execute(insert(private), [{**b.model_dump(), "owner_id": owner_id} for b in snapshot.private_events])
         conn.execute(update(states).where(states.c.owner_id == owner_id).values(
-            connection_status="synced", last_success_at=now,
+            connection_status="synced", last_success_at=now, provider_kind=snapshot.provider_kind,
             coverage_start=snapshot.coverage.start, coverage_end=snapshot.coverage.end,
             snapshot_version=states.c.snapshot_version + 1,
             schedule_version=states.c.schedule_version + 1))
@@ -221,8 +226,18 @@ class SQLiteScheduleRepository:
             conn.execute(update(states).where(states.c.owner_id == owner_id,
                 states.c.refresh_generation == ticket).values(connection_status="stale"))
 
-    def disconnect(self, owner_id):
-        with self.engine.begin() as conn:
+    def mark_connected(self, owner_id, provider_kind="google", connection=None):
+        with (nullcontext(connection) if connection is not None else self.engine.begin()) as conn:
+            self._ensure_state(conn, owner_id)
+            conn.execute(delete(busy).where(busy.c.owner_id == owner_id))
+            conn.execute(delete(private).where(private.c.owner_id == owner_id))
+            conn.execute(update(states).where(states.c.owner_id == owner_id).values(
+                connection_status="stale", provider_kind=provider_kind, last_success_at=None,
+                coverage_start=None, coverage_end=None, schedule_version=states.c.schedule_version+1,
+                snapshot_version=states.c.snapshot_version+1,refresh_generation=states.c.refresh_generation+1))
+
+    def disconnect(self, owner_id, connection=None):
+        with (nullcontext(connection) if connection is not None else self.engine.begin()) as conn:
             self._ensure_state(conn, owner_id)
             conn.execute(delete(busy).where(busy.c.owner_id == owner_id))
             conn.execute(delete(private).where(private.c.owner_id == owner_id))

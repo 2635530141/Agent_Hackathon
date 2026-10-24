@@ -157,4 +157,5 @@ def connect_calendar() -> None:
 
 def calendar_status() -> dict:
     return {"connected":False, "horizon":"synthetic fixture only", "access":"Primary calendar read-only is not connected",
-            "mode":"synthetic", "message":"Synthetic schedules only. Google not configured; team identity integration required."}
+            "mode":"synthetic", "configuration_status":"not_configured", "callback_uri":"http://127.0.0.1:8011/calendar/google/callback",
+            "message":"Synthetic schedules only. Google not configured; team identity integration required."}

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.routers import matching, pages, profile, schedule, session
+from app.routers import calendar_google
 from app.web import BASE
 
 app = FastAPI(title="StudyMate")
@@ -11,6 +12,7 @@ app.include_router(profile.router)
 app.include_router(schedule.router)
 app.include_router(matching.router)
 app.include_router(session.router)
+app.include_router(calendar_google.router)
 
 
 if __name__ == "__main__":

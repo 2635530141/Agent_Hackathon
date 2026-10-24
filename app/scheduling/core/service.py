@@ -41,9 +41,10 @@ class ScheduleService:
         fresh = age is not None and 0 <= age <= self.freshness_seconds
         verified = not disconnected and state["connection_status"] == "synced" and covered and fresh
         return CalendarStatus(
-            provider_kind="none" if disconnected else "fake",
+            provider_kind="none" if disconnected else state.get("provider_kind", "fake"),
             connection_status=state["connection_status"] if disconnected or verified else "stale",
-            verification_level="manual_only" if disconnected else "synthetic" if verified else "unknown",
+            verification_level=("manual_only" if disconnected else
+                ("google_current" if state.get("provider_kind") == "google" else "synthetic") if verified else "unknown"),
             last_success_at=last, coverage_start=state["coverage_start"], coverage_end=state["coverage_end"],
             snapshot_version=state["snapshot_version"])
 
@@ -66,8 +67,10 @@ class ScheduleService:
             free = []
         elif status.verification_level == "manual_only":
             warnings.append("MANUAL_ONLY: external calendar not checked")
-        else:
+        elif status.verification_level == "synthetic":
             warnings.append("SYNTHETIC: fake calendar data; not verified Google integration")
+        else:
+            warnings.append("PRIMARY_CALENDAR_ONLY: complete stored read snapshot; refresh required again before Send")
         snapshot = AvailabilitySnapshot(subject_id=subject_id, timezone=self.timezone_name,
             horizon=horizon, available=free, priority_windows=sorted(priority, key=lambda p: (p.start, p.course_id)),
             calendar=status, schedule_version=bundle["state"]["schedule_version"], warnings=warnings)

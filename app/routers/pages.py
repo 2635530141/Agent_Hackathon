@@ -7,9 +7,16 @@ from app.web import render
 router = APIRouter()
 
 
+def _start(request: Request, *, registered: bool) -> str:
+    """An existing account opens the schedule. A new account fills in a profile first."""
+    if getattr(request.app.state, "private_calendar_host", None):
+        return "/schedule"
+    return "/profile" if registered else "/schedule"
+
+
 def _landing(request: Request, mode: str, error: str = "", full_name: str = "", email: str = ""):
     if request.session.get("user"):
-        return RedirectResponse("/home", status_code=303)
+        return RedirectResponse(_start(request, registered=False), status_code=303)
     return render(
         request,
         "landing.html",
@@ -45,7 +52,7 @@ def login(request: Request, email: str = Form(""), password: str = Form("")):
     if user is None:
         return _landing(request, "login", "That email and password do not match.", email=email)
     _signed_in(request, user)
-    return RedirectResponse("/home", status_code=303)
+    return RedirectResponse(_start(request, registered=False), status_code=303)
 
 
 @router.post("/register")
@@ -61,7 +68,7 @@ def register(
     except ValueError as exc:
         return _landing(request, "register", str(exc), full_name=name, email=email)
     _signed_in(request, user)
-    return RedirectResponse("/home", status_code=303)
+    return RedirectResponse(_start(request, registered=True), status_code=303)
 
 
 @router.post("/logout")
@@ -79,8 +86,8 @@ def _signed_in(request, user):
 
 
 @router.get("/home")
-def home(request: Request):
-    return render(request, "home.html", nav="home")
+def home():
+    return RedirectResponse("/schedule", status_code=303)
 
 
 @router.get("/api/health")

@@ -119,6 +119,42 @@ _others = [
     _student("u_kai", "Kai Wong", major="Undeclared", year=1, courses=["cs61a", "math54"], under_18=True),
 ]
 
+# Extra classmates. No weekly hours, so the older matcher still uses the original six.
+# Their open rooms are what a session joins.
+_COHORT = [
+    ("u_nina", "Nina Alvarez", "EECS", 2, ["cs61a", "cs61b"], ["talk", "quiet"], "We talk through one problem, then go quiet.", ["coffee", "library"], "A cafe is fine when Doe is full.", 3, 4, "female", [], "2415 Dwight Way", 37.8682, -122.2598),
+    ("u_ravi", "Ravi Shah", "EECS", 3, ["cs61a", "cs61b"], ["quiet"], "Headphones on unless we are stuck.", ["library"], "", 2, 3, "male", [], "2200 Bancroft Way", 37.8688, -122.2635),
+    ("u_sophie", "Sophie Nguyen", "Data Science", 1, ["cs61a", "data8"], ["drill"], "Practice questions, then compare answers.", ["coffee"], "", 4, 5, "female", [], "2500 Durant Ave", 37.8678, -122.2589),
+    ("u_hugo", "Hugo Berg", "Computer Science", 4, ["cs61a", "cs61b"], ["talk"], "Whiteboard first.", ["coffee", "outdoor"], "Somewhere we can talk.", 3, 5, "male", [], "1730 Euclid Ave", 37.8762, -122.2604),
+    ("u_mina", "Mina Cho", "Mathematics", 2, ["cs61a", "math54"], ["quiet", "drill"], "", ["library", "outdoor"], "", 2, 3, "female", [], "2320 Dana St", 37.8671, -122.2622),
+    ("u_elena", "Elena Rossi", "EECS", 3, ["cs61a", "math54"], ["drill"], "Problem sets from the back.", ["coffee", "library"], "", 4, 4, "female", [], "1920 Walnut St", 37.8754, -122.2688),
+    ("u_hana", "Hana Ito", "Cognitive Science", 2, ["cs61a"], ["talk"], "", ["coffee"], "", 2, 3, "female", ["female"], "2000 Hearst Ave", 37.8736, -122.2680),
+    ("u_devon", "Devon Brooks", "EECS", 2, ["cs61a", "cs61b"], ["quiet"], "", ["library"], "", 3, 4, "male", [], "2450 Bancroft Way", 37.8690, -122.2610),
+    ("u_theo", "Theo Marin", "Mathematics", 3, ["math54", "data8"], ["talk"], "Explain it out loud once.", ["library", "outdoor"], "", 3, 4, "male", [], "1750 Arch St", 37.8768, -122.2644),
+    ("u_grace", "Grace Okonkwo", "Applied Mathematics", 4, ["math54"], ["quiet"], "", ["library"], "", 2, 2, "female", [], "2301 Bowditch St", 37.8686, -122.2564),
+    ("u_noah", "Noah Feldman", "Physics", 2, ["math54", "cs61b"], ["drill"], "", ["coffee"], "", 5, 5, "male", ["male"], "1888 Berkeley Way", 37.8730, -122.2702),
+    ("u_iris", "Iris Patel", "Statistics", 1, ["data8", "math54"], ["talk", "drill"], "", ["coffee", "library"], "", 4, 5, "female", [], "2420 Bowditch St", 37.8674, -122.2568),
+    ("u_camille", "Camille Dubois", "Data Science", 2, ["data8", "math54"], ["quiet"], "", ["outdoor", "library"], "Outside if it is still light.", 3, 4, "female", [], "2109 Bancroft Way", 37.8684, -122.2668),
+    ("u_felix", "Felix Nguyen", "Economics", 3, ["data8"], ["talk"], "", ["coffee"], "", 2, 4, "male", [], "2550 Dana St", 37.8648, -122.2618),
+    ("u_yasmin", "Yasmin Haddad", "EECS", 4, ["cs61b"], ["quiet"], "", ["library"], "", 3, 4, "female", [], "2333 College Ave", 37.8666, -122.2542),
+    ("u_jun", "Jun Park", "Computer Science", 1, ["cs61b", "data8"], ["drill"], "Short timed sets.", ["coffee", "library"], "", 4, 5, "male", [], "1998 Shattuck Ave", 37.8720, -122.2686),
+    ("u_lila", "Lila Santos", "Molecular and Cell Biology", 2, ["math54", "data8"], ["talk"], "", ["outdoor", "coffee"], "", 3, 3, "female", [], "2610 Channing Way", 37.8662, -122.2566),
+    ("u_sasha", "Sasha Petrov", "EECS", 3, ["cs61a", "cs61b"], ["quiet"], "", ["coffee"], "", 2, 4, "other", [], "2015 Haste St", 37.8658, -122.2674),
+    ("u_owen", "Owen Walsh", "Undeclared", 1, ["cs61a", "data8"], ["talk"], "", ["library", "coffee"], "", 3, 5, "male", [], "2400 Durant Ave", 37.8676, -122.2608),
+    ("u_mei", "Mei Laurent", "Data Science", 4, ["data8", "cs61a"], ["drill", "quiet"], "", ["library"], "", 2, 3, "female", [], "1790 Euclid Ave", 37.8758, -122.2608),
+]
+for sid, name, major, year, courses, styles, style_note, places, place_note, group_min, group_max, gender, preference, street, lat, lng in _COHORT:
+    person = _student(
+        sid, name, major=major, year=year, courses=courses, style=styles[0], places=places,
+        group_size=group_min, anchor="home", lat=lat, lng=lng, radius=1800, street=street,
+        gender_self=gender, gender_preference=preference,
+    )
+    person["study_styles"] = list(styles)
+    person["study_style_note"] = style_note
+    person["place_note"] = place_note
+    person["group_max"] = group_max
+    _others.append(person)
+
 _places = [
     {
         "name": "Yali's Cafe",
@@ -498,6 +534,73 @@ _rooms = [
         ],
     },
 ]
+
+
+def _seat(person: dict) -> dict:
+    return {"id": person["id"], "first_name": person["first_name"], "major": person["major"], "year": person["year"]}
+
+
+def _fill_open_rooms() -> None:
+    """Open groups across the demo week so a normal session time has a seat."""
+    courses = {course["id"]: course["code"] for course in COURSES}
+    place_names = {"coffee": "Yali's Cafe", "library": "Doe Library", "outdoor": "Faculty Glade"}
+    plan = [
+        ("cs61a", "10:00", "12:00", ["library", "coffee"]),
+        ("cs61a", "13:00", "15:00", ["outdoor", "coffee", "library"]),
+        ("cs61a", "16:00", "18:00", ["coffee", "library", "outdoor"]),
+        ("cs61a", "18:00", "21:00", ["library", "coffee"]),
+        ("math54", "10:00", "12:00", ["coffee", "library"]),
+        ("math54", "16:00", "18:00", ["library", "outdoor", "coffee"]),
+        ("math54", "18:00", "21:00", ["coffee", "library"]),
+        ("cs61b", "16:00", "18:00", ["coffee", "library"]),
+        ("cs61b", "19:00", "21:00", ["library", "coffee"]),
+        ("data8", "13:00", "15:00", ["outdoor", "library"]),
+        ("data8", "16:00", "18:00", ["library", "coffee"]),
+        ("data8", "18:00", "20:00", ["coffee", "library"]),
+    ]
+    people = [person for person in _others if not person["under_18"]]
+    taken: dict[str, list[tuple[str, str]]] = {}
+    for room in _rooms:
+        for member in room["members"]:
+            taken.setdefault(member["id"], []).append((room["starts_at"], room["ends_at"]))
+    cursor = 0
+    for day in range(25, 32):
+        for index, (course_id, start_hm, end_hm, place_types) in enumerate(plan):
+            start, end = f"2026-10-{day:02d}T{start_hm}", f"2026-10-{day:02d}T{end_hm}"
+            pool = [person for person in people if course_id in person["course_ids"]]
+            if not pool:
+                continue
+            ordered = pool[cursor % len(pool) :] + pool[: cursor % len(pool)]
+            cursor += 1
+            members = []
+            for person in ordered:
+                if any(booked_start < end and booked_end > start for booked_start, booked_end in taken.get(person["id"], [])):
+                    continue
+                members.append(person)
+                if len(members) == 2:
+                    break
+            if not members:
+                continue
+            for person in members:
+                taken.setdefault(person["id"], []).append((start, end))
+            place_type = place_types[(day + index) % len(place_types)]
+            _rooms.append(
+                {
+                    "id": f"room_{course_id}_{day}_{start_hm.replace(':', '')}",
+                    "host_id": members[0]["id"],
+                    "course_id": course_id,
+                    "course_code": courses[course_id],
+                    "starts_at": start,
+                    "ends_at": end,
+                    "place_type": place_type,
+                    "place_name": place_names[place_type],
+                    "capacity": 4,
+                    "members": [_seat(person) for person in members],
+                }
+            )
+
+
+_fill_open_rooms()
 
 
 _room_rankings: dict[str, dict] = {}

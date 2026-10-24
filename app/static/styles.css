@@ -27,6 +27,11 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
 fieldset {
   border: 0;
   margin: 0;

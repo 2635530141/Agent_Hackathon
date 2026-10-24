@@ -163,7 +163,7 @@ _SPAN_BETWEEN = re.compile(
     r"\bbetween\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+and\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", re.IGNORECASE
 )
 _SPAN = re.compile(
-    r"\b(?:from\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|until|till|-|–)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b",
+    r"\b(?:from\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|until|till|-|–|—)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b",
     re.IGNORECASE,
 )
 

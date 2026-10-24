@@ -46,7 +46,7 @@
     for (const input of form.querySelectorAll("input,select")) input.disabled=readonly;
     field("kind").disabled=readonly || Boolean(editing); save.hidden=readonly; remove.hidden=readonly || !editing;
     kindChanged();
-    if (readonly) document.getElementById("calendar-entry-help").textContent="Read-only calendar or confirmed session. Manage the source event in its original app.";
+    if (readonly) document.getElementById("calendar-entry-help").textContent="Read-only busy block or confirmed session. Manage it in its source.";
     returnFocus=document.activeElement;dialog.hidden=false;
     document.getElementById("calendar-editor-close").focus();
   }
@@ -143,7 +143,7 @@
     renderedEntries.forEach(({element})=>element.classList.toggle("cal-event-short",element.getBoundingClientRect().height<32));
   }
   const resize=new ResizeObserver(fitTimetable);
-  document.querySelectorAll(".site-header,.calendar-connection,.calendar-toolbar,.calendar-meta,.calendar-zone,.calendar-page>.callout")
+  document.querySelectorAll(".site-header,.calendar-toolbar,.calendar-meta,.calendar-zone,.calendar-page>.callout")
     .forEach(element=>resize.observe(element));
   window.addEventListener("resize",fitTimetable);
   try {hoursSelect.value=sessionStorage.getItem("studymate-calendar-visible-hours") || "study";} catch (_) {}

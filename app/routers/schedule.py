@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 router = APIRouter(dependencies=[Depends(owner_access)])
+legacy_google_router = APIRouter(dependencies=[Depends(owner_access)])
 
 
 def _page(request: Request, error: str = "", saved: str = "", conflict_result=None):
@@ -30,6 +31,18 @@ def _page(request: Request, error: str = "", saved: str = "", conflict_result=No
     except ValueError:
         day = date(2026, 10, 29)
         error = "Choose a valid date."
+    if not live_context():
+        # Static demo busy blocks are local fixture data, with no external sync.
+        # Recalculate for the visible week so removing the sync UI never leaves
+        # stored-hours availability unusable after the old snapshot TTL expires.
+        from app.scheduling.core.providers.fake import FakeCalendarProvider
+        runtime = get_runtime()
+        if isinstance(runtime.service.provider, FakeCalendarProvider):
+            monday = day-timedelta(days=day.weekday())
+            visible = horizon(monday.isoformat()+"T00:00", (monday+timedelta(days=7)).isoformat()+"T00:00")
+            state = runtime.repository.read_bundle(owner_id())["state"]
+            if runtime.service._calendar_status(state, visible).verification_level == "unknown":
+                runtime.service.refresh_calendar(Actor(subject_id=owner_id()), visible)
     availability = schedule_core.effective_availability(owner_id(), day.isoformat()+"T00:00", (day+timedelta(days=1)).isoformat()+"T00:00")
     blocks = []
     for block in schedule_core.list_busy():
@@ -86,11 +99,6 @@ def schedule_page(request: Request, error: str = "", saved: str = ""):
     return _page(request, error, saved)
 
 
-@router.get("/schedule/google-setup")
-def google_setup(request: Request):
-    return render(request,"calendar_setup.html",nav="schedule")
-
-
 @router.post("/schedule/hours")
 async def save_hours_form(request: Request):
     form = await request.form()
@@ -145,7 +153,7 @@ def remove_exception(exception_id: str):
     return RedirectResponse("/schedule?saved=slot", status_code=303)
 
 
-@router.post("/schedule/calendar")
+@legacy_google_router.post("/schedule/calendar")
 def connect_calendar(request: Request):
     # The existing entry point reaches M2 only after the host has independently
     # supplied verified auth and an isolated live composition. Default demo stays off.
@@ -184,7 +192,8 @@ def edit_exception(exception_id: str, starts_at: str = Form(...), ends_at: str =
     return RedirectResponse("/schedule?saved=slot", status_code=303)
 
 
-@router.post("/schedule/calendar/refresh")
+@router.post("/schedule/recalculate")
+@legacy_google_router.post("/schedule/calendar/refresh")
 def refresh_synthetic_calendar(day: str = Form("")):
     # Refresh the known synthetic pool together so a fresh owner snapshot does
     # not leave candidate fixtures stale. This never contacts a real provider.
@@ -208,7 +217,7 @@ def refresh_synthetic_calendar(day: str = Form("")):
     return RedirectResponse(f"/schedule?{query}saved={saved}", status_code=303)
 
 
-@router.post("/schedule/calendar/disconnect")
+@legacy_google_router.post("/schedule/calendar/disconnect")
 def disconnect_calendar():
     context = live_context()
     if not context:

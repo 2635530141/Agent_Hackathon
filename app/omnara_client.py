@@ -86,6 +86,7 @@ def _prompt(turns: list[dict], courses: list[dict]) -> str:
         "Any time on one day is that whole day, 09:00 to 21:00. Any time on Wednesday is "
         "2026-10-28T09:00 to 2026-10-28T21:00. Do not ask again.\n"
         "A day and a clock also ends the question. Wednesday at 4 is 2026-10-28T16:00 to 2026-10-28T17:00. "
+        "A range keeps both ends. Wednesday 4-6 is 2026-10-28T16:00 to 2026-10-28T18:00, not one hour at 6. "
         "Doe Library is place_type library. A coffee shop or coffeeshop is place_type coffee.\n"
         'Request shape: {"course_id":"CS 61A","starts_at":"2026-10-28T14:00","ends_at":"2026-10-28T16:00","place_type":"library","note":""}\n'
         f"Conversation:\n{dialogue}"

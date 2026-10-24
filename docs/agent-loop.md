@@ -1,5 +1,7 @@
 # Study planning loop
 
+Historical checkpoint for commits 116ffa6/363a5bd. The current four-tool contracts, cumulative request budgets, Session confirmation seam and live verification limits are documented in [agentic-upgrade.md](agentic-upgrade.md); they supersede the earlier six-tool/per-attempt description below.
+
 This extends Calendar on `shuluun`, starting from `da61959` and integrating the subsequently published M3/timetable head `a07b98a`. It preserves team Profile, Matching, Session, timetable and export guards. `/agent` is linked from Session and the shared navigation. The agent adds no invitation/session lifecycle, email sender, booking connector or calendar writer.
 
 ## Repository review before implementation

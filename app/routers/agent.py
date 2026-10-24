@@ -43,7 +43,7 @@ def page(request, run=None, error=""):
     for field in ("window_start", "window_end"):
         if goal.get(field):
             goal[field] = local_input(goal[field])
-    return render(request, "agent.html", nav="agent", run=run, goal=goal, courses=store.courses(),
+    return render(request, "agent.html", nav="session", run=run, goal=goal, courses=store.courses(),
                   preferences=profile_brief(), csrf=csrf(request), action_key=uuid4().hex,
                   timezone=display_zone(), error=error)
 
@@ -79,6 +79,7 @@ def status(run_id: str, actor=Depends(demo_owner)):
 def act(request: Request, run_id: str, action: str, csrf_token: str = Form(""), version: int = Form(...),
         action_key: str = Form(...), course_id: str = Form(""), window_start: str = Form(""),
         window_end: str = Form(""), duration_minutes: str = Form(""), place_type: str = Form(""),
+        allowed_alternatives: list[str] = Form([]),
         actor=Depends(demo_owner)):
     verify(request, csrf_token)
     service = AgentService()
@@ -89,6 +90,8 @@ def act(request: Request, run_id: str, action: str, csrf_token: str = Form(""), 
         else:
             patch = {k:v for k,v in {"course_id":course_id,"window_start":window_start,"window_end":window_end,
                      "duration_minutes":int(duration_minutes) if duration_minutes else None,"place_type":place_type}.items() if v}
+            if action == "answer":
+                patch["allowed_alternatives"] = allowed_alternatives
             service.act(run_id, actor.subject_id, version, action_key[:128], action, patch)
     except StaleRun:
         return page(request, load(service, run_id, actor.subject_id), "This request changed in another tab. Review the current revision.")

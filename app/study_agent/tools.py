@@ -77,7 +77,10 @@ class StudyTools:
         if missing(self.goal):
             raise ValueError("CLARIFICATION_REQUIRED")
         self.read_started = True
-        return getattr(self, name)(**args)
+        registry = {"get_profile":self.get_profile,"find_matches":self.find_matches,
+                    "check_availability":self.check_availability,"suggest_places":self.suggest_places,
+                    "validate_proposal":self.validate_proposal}
+        return registry[name](**args)
 
     def get_profile(self):
         return profile_brief()
@@ -88,6 +91,10 @@ class StudyTools:
         request = StudyRequest(course_id=g["course_id"], starts_at=g["window_start"],
                                ends_at=g["window_end"], place_type=g["place_type"] or profile_brief()["place_types"][0])
         ranked, _, later, _ = matching_core.find_matches(request, matching_core.load_inputs(), duration_minutes=g["duration_minutes"])
+        self.nearest_alternatives = [{"candidate_id":c.person.profile.id,"first_name":c.person.first_name,
+            "starts_at":s.isoformat(),"ends_at":(s+timedelta(minutes=g["duration_minutes"])).isoformat(),
+            "duration_minutes":g["duration_minutes"],"requires_user_permission":True}
+            for c in ranked for s,e in c.free[:1] if e-s>=timedelta(minutes=g["duration_minutes"])][:2] if later else []
         start, end = parse_instant(g["window_start"]), parse_instant(g["window_end"])
         duration = timedelta(minutes=g["duration_minutes"])
         self.candidates = []

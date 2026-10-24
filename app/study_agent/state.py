@@ -17,6 +17,7 @@ class Goal(BaseModel):
     duration_minutes: int | None = Field(default=None, ge=15, le=240)
     place_type: Literal["coffee", "library", "outdoor"] | None = None
     avoid: list[Literal["coffee", "library", "outdoor"]] = Field(default_factory=list, max_length=3)
+    allowed_alternatives: list[Literal["coffee", "library", "outdoor"]] = Field(default_factory=list, max_length=3)
 
 
 class StaleRun(Exception):
@@ -29,6 +30,10 @@ class RunRepository:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.execute("CREATE TABLE IF NOT EXISTS smagent_runs (id TEXT PRIMARY KEY, owner TEXT NOT NULL, version INTEGER NOT NULL, body TEXT NOT NULL)")
+            db.execute("""CREATE TABLE IF NOT EXISTS smagent_calls (
+                agent TEXT NOT NULL, call_id TEXT NOT NULL, run_id TEXT NOT NULL, owner TEXT NOT NULL,
+                signature TEXT NOT NULL, status TEXT NOT NULL, result TEXT,
+                PRIMARY KEY(agent,call_id))""")
 
     def connect(self):
         return sqlite3.connect(self.path, timeout=5)
@@ -40,6 +45,8 @@ class RunRepository:
                "proposal": None, "approved_revision": None, "question": "", "notice": "",
                "cloud_id": None, "cursor": 0, "processed": [], "demo_block": None}
         run.update(planning_attempts=0, clarifications=0)
+        run.update(budget={"tool_rounds":0,"model_calls":0,"elapsed_seconds":0,"counts":{},"queries":[]},
+                   tool_evidence={}, pending_input=None, rejected_proposals=0)
         with self.connect() as db:
             db.execute("INSERT INTO smagent_runs VALUES (?, ?, ?, ?)",
                        (run["id"], owner, 0, json.dumps(run)))
@@ -61,6 +68,22 @@ class RunRepository:
             if changed != 1:
                 raise StaleRun("REQUEST_CHANGED")
         run.update(updated)
+
+    def claim_call(self, run, call_id, signature):
+        """Durable receipt before execution. An interrupted read is failed, never rerun silently."""
+        with self.connect() as db:
+            inserted = db.execute("INSERT OR IGNORE INTO smagent_calls VALUES (?,?,?,?,?,'executing',NULL)",
+                (run["cloud_id"],call_id,run["id"],run["owner"],signature)).rowcount
+            row = db.execute("SELECT run_id,owner,signature,status,result FROM smagent_calls WHERE agent=? AND call_id=?",
+                (run["cloud_id"],call_id)).fetchone()
+        if row[:3] != (run["id"],run["owner"],signature):
+            raise ValueError("TOOL_MAPPING_MISMATCH")
+        return bool(inserted), row[3], json.loads(row[4]) if row[4] else None
+
+    def record_call(self, run, call_id, result, status="executed"):
+        with self.connect() as db:
+            db.execute("UPDATE smagent_calls SET status=?, result=? WHERE agent=? AND call_id=? AND run_id=? AND owner=?",
+                (status,json.dumps(result),run["cloud_id"],call_id,run["id"],run["owner"]))
 
 
 def event(run, kind, summary, **metadata):

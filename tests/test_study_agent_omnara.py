@@ -17,7 +17,7 @@ GOAL = {"course_id":"cs61a","window_start":"2026-10-29T18:00","window_end":"2026
 
 def test_native_custom_tool_replay_uses_real_tools_then_grounded_final():
     state = {"step":0,"outputs":{},"calls":[],"launch":None}
-    names = ["get_profile","find_matches","check_availability","suggest_places","validate_proposal"]
+    names = ["get_profile","find_matches","suggest_places","check_booking"]
 
     def handler(req):
         path = req.url.path
@@ -26,10 +26,10 @@ def test_native_custom_tool_replay_uses_real_tools_then_grounded_final():
             return httpx.Response(201,json={"agent":{"id":"agt_isolated"},"agent_input":{"id":"input_current"}})
         if path.endswith("/events"):
             events = [{"sequence":1,"event_kind":"agent_input","agent_input_id":"input_current","turn_id":"current"}] if state["step"] == 0 else []
-            if state["step"] == 5:
+            if state["step"] == 4:
                 events += [{"sequence":7,"event_kind":"model_output","turn_id":"current","stop_reason":"end_turn",
                             "content_blocks":[{"type":"reasoning","text":"hidden reasoning must not leak"},
-                             {"type":"text","text":json.dumps({"action":"propose","evidence_id":state['outputs']['validate_proposal']['evidence_id']})}]}]
+                             {"type":"text","text":json.dumps({"action":"propose","candidate_ids":state["outputs"]["suggest_places"]["selection"]["candidate_ids"],"starts_at":state["outputs"]["suggest_places"]["selection"]["starts_at"],"place_id":state["outputs"]["suggest_places"]["places"][0]["id"]})}]}]
             return httpx.Response(200,json={"data":events,"has_more":False})
         if path.endswith("/tool-calls"):
             step = state["step"]
@@ -38,8 +38,8 @@ def test_native_custom_tool_replay_uses_real_tools_then_grounded_final():
                 ranked = state["outputs"]["find_matches"]
                 ids, start = next(group_options(ranked["candidates"], ranked["group_size"],60))
                 args.update(candidate_ids=ids, starts_at=start)
-            if step == 4:
-                args["place_id"] = state["outputs"]["suggest_places"]["places"][0]["id"]
+            if step == 3:
+                args = {"place_id": state["outputs"]["suggest_places"]["places"][0]["id"]}
             return httpx.Response(200,json={"data":[{"id":f"call_{step}","turn_id":"current","name":names[step],"input":args}],"next_cursor":None})
         if path.endswith("/result"):
             result = json.loads(req.content)
@@ -47,6 +47,9 @@ def test_native_custom_tool_replay_uses_real_tools_then_grounded_final():
             name = names[state["step"]]
             state["calls"].append(name)
             state["outputs"][name] = result["content_blocks"][0]["value"]
+            if name == "suggest_places":
+                ids, start = next(group_options(state["outputs"]["find_matches"]["candidates"],2,60))
+                state["outputs"][name]["selection"] = {"candidate_ids":ids,"starts_at":start}
             state["step"] += 1
             return httpx.Response(201,json={})
         raise AssertionError(path)
@@ -59,7 +62,7 @@ def test_native_custom_tool_replay_uses_real_tools_then_grounded_final():
     assert state["calls"] == names
     config = json.loads(state["launch"]["config_source"]["source"])
     assert "machine_sources" not in config and "subagents" not in config
-    assert set(config["tools"]) == {"set_requirements",*names}
+    assert set(config["tools"]) == set(names)
     assert "hidden reasoning" not in json.dumps(run)
     assert "fixture-token" not in json.dumps(run)
 

@@ -638,6 +638,13 @@ def match(request: StudyRequest, inputs: Inputs | None = None, swap_person: int 
 
     profiles = [me.profile] + [cand.person.profile for cand in group]
     options = suggest_places(request.place_type, profiles, window[0], window[1], note.avoid, me.profile.place_types)
+    # Ranking an infeasible venue last never makes it safe to propose. A different
+    # type needs the explicit-permission agent flow; legacy/manual calls ask first.
+    options = [p for p in options if p["inside"] and p["open"] and p.get("opens") and p.get("closes")
+               and p["kind"] == request.place_type and p["kind"] not in note.avoid]
+    if not options:
+        return MatchResult(request=request,candidates=ranked,funnel=funnel,later=later,
+            message="No feasible place is verified for everyone's radius and the full session. Change the place type or time explicitly.")
     place = options[swap_place % len(options)]
 
     proposal = Proposal(

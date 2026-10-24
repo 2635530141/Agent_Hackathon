@@ -145,6 +145,8 @@ def _session_context(
 
 
 def _form_only(request: Request, sentence: str, error: str = "", notice: str = ""):
+    from app.routers.agent import csrf
+    csrf(request)
     catalog = _profile_courses() or store.courses()
     return render(
         request,
@@ -186,7 +188,14 @@ def session_page(
     study_anyway: str = "0",
     notice: str = "",
     discarded: str = "0",
+    agent_request_id: str = "",
 ):
+    if agent_request_id:
+        from app.routers.agent import page, load
+        from app.scheduling.demo import demo_owner
+        from app.study_agent.service import AgentService
+        actor = demo_owner(request)
+        return page(request,load(AgentService(),agent_request_id,actor.subject_id))
     if ready != "1":
         return _form_only(request, sentence, notice=notice)
     context = _session_context(course_id, starts_at, ends_at, place_type, note, study_anyway == "1", sentence)
@@ -198,10 +207,24 @@ def session_page(
 
 
 @router.post("/session/interpret")
-def interpret(request: Request, sentence: str = Form("")):
+def interpret(request: Request, sentence: str = Form(""), mode: str = Form("legacy"), csrf_token: str = Form("")):
+    from app.scheduling.demo import demo_owner
+    demo_owner(request)
     text = sentence.strip()
     if not text:
         return _form_only(request, "", error="Write what you want to study.")
+    if mode != "legacy":
+        from app.routers.agent import verify
+        from app.scheduling.demo import demo_owner
+        from app.study_agent.service import AgentService
+        verify(request,csrf_token)
+        actor = demo_owner(request)
+        refresh_before_request(request)
+        try:
+            run = AgentService().create(actor.subject_id,text,mode)
+        except ValueError:
+            return _form_only(request,text,error="Choose a valid mode and explicit study requirements.")
+        return RedirectResponse(f"/session?agent_request_id={run['id']}",status_code=303)
     courses = _profile_courses() or store.courses()
     try:
         refresh_before_request(request)
@@ -287,15 +310,39 @@ def swap_place(
 @router.post("/session/confirm")
 def confirm_invite(
     request: Request,
-    course_id: str = Form(...),
-    starts_at: str = Form(...),
-    ends_at: str = Form(...),
-    place_type: str = Form(...),
+    course_id: str = Form(""),
+    starts_at: str = Form(""),
+    ends_at: str = Form(""),
+    place_type: str = Form(""),
     note: str = Form(""),
     study_anyway: str = Form("0"),
     invite: str = Form(""),
     sentence: str = Form(""),
+    agent_request_id: str = Form(""),
+    proposal_revision: int = Form(-1),
+    evidence_id: str = Form(""),
+    csrf_token: str = Form(""),
 ):
+    if agent_request_id:
+        from app.routers.agent import verify
+        from app.scheduling.demo import demo_owner
+        from app.study_agent.service import AgentService
+        from fastapi import HTTPException
+        actor = demo_owner(request)
+        verify(request,csrf_token)
+        refresh_before_request(request)
+        def synthetic_executor(p):
+            store.create_invitations([{"person_id":person["id"],"first_name":person["first_name"],
+                "course_id":store.course_by_id(AgentService().repository.get(agent_request_id,actor.subject_id)["goal"]["course_id"])["id"],
+                "course_code":p["course"],"course_name":p["course"],"starts_at":p["starts_at"],"ends_at":p["ends_at"],
+                "place_name":p["place"]["name"],"message":p["invite"]} for person in p["people"]])
+        try:
+            AgentService().before_send(agent_request_id,actor.subject_id,proposal_revision,evidence_id,synthetic_executor)
+        except KeyError:
+            raise HTTPException(404,"REQUEST_NOT_FOUND") from None
+        except ValueError:
+            raise HTTPException(409,"EXACT_PROPOSAL_APPROVAL_REQUIRED") from None
+        return RedirectResponse(f"/session?agent_request_id={agent_request_id}",status_code=303)
     course = _course_record(course_id)
     try:
         refresh_before_request(request)

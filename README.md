@@ -1,4 +1,6 @@
 # Agent_Hackathon
+
+Current implementation notes: [Calendar and timetable](docs/calendar-writeback-handoff.md) and [four-tool Omnara upgrade](docs/agentic-upgrade.md). Calendar-only PR #3 is merged into main; the Agent upgrade is reviewed separately. Synthetic tests are not live Google/Omnara verification.
 StudyMate Agent PRD
 v1, finalized for the hackathon build. October 24, 2026. Working name, see §12.
 1. Overview

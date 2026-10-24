@@ -11,6 +11,7 @@ router = APIRouter()
 
 def _form_data(
     study_style: str,
+    study_style_note: str,
     street_address: str,
     radius_meters: str,
     anchor: str,
@@ -20,11 +21,12 @@ def _form_data(
     gender_self: str,
     gender_preference: str,
     place_types: list[str] | None,
-    course_ids: list[str] | None,
+    courses: str,
     under_18: str,
 ) -> dict:
     return {
         "study_style": study_style,
+        "study_style_note": study_style_note,
         "street_address": street_address,
         "radius_meters": radius_meters,
         "anchor": anchor,
@@ -34,7 +36,7 @@ def _form_data(
         "gender_self": gender_self,
         "gender_preference": gender_preference,
         "place_types": place_types or [],
-        "course_ids": course_ids or [],
+        "courses": courses,
         "under_18": under_18 == "1",
     }
 
@@ -50,6 +52,9 @@ def profile_page(request: Request, error: str = "", saved: int = 0):
         profile=profile,
         public=public,
         courses=store.courses(),
+        course_text=profile_core.course_codes(profile.course_ids),
+        maps_connected=profile_core.maps_connected(),
+        anchor_map=profile_core.maps_url(profile.anchor_lat, profile.anchor_lng),
         style_labels=profile_core.STYLE_LABELS,
         place_labels=profile_core.PLACE_LABELS,
         error=error,
@@ -60,6 +65,7 @@ def profile_page(request: Request, error: str = "", saved: int = 0):
 @router.post("/profile")
 def profile_save(
     study_style: str = Form(...),
+    study_style_note: str = Form(""),
     street_address: str = Form(""),
     radius_meters: str = Form(...),
     anchor: str = Form(...),
@@ -69,13 +75,14 @@ def profile_save(
     gender_self: str = Form(""),
     gender_preference: str = Form(""),
     place_types: list[str] | None = Form(None),
-    course_ids: list[str] | None = Form(None),
+    courses: str = Form(""),
     under_18: str = Form(""),
 ):
     try:
         profile_core.update_profile(
             _form_data(
                 study_style,
+                study_style_note,
                 street_address,
                 radius_meters,
                 anchor,
@@ -85,7 +92,7 @@ def profile_save(
                 gender_self,
                 gender_preference,
                 place_types,
-                course_ids,
+                courses,
                 under_18,
             )
         )

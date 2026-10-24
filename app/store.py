@@ -24,6 +24,7 @@ _owner = {
     "name": "Maya Chen",
     "email": "maya@example.edu",
     "study_style": "quiet",
+    "study_style_note": "",
     "street_address": "2100 Channing Way",
     "radius_meters": 1500,
     "anchor": "campus",
@@ -66,6 +67,7 @@ def _student(
         "first_name": name.split()[0],
         "email": f"{sid.removeprefix('u_')}@example.edu",
         "study_style": style,
+        "study_style_note": "",
         "street_address": street,
         "radius_meters": radius,
         "anchor": anchor,
@@ -252,6 +254,12 @@ def course_by_id(course_id: str) -> dict | None:
         if course["id"] == course_id:
             return deepcopy(course)
     return None
+
+
+def add_course(course: dict) -> None:
+    """Students type their own course codes; new ones join the shared catalog."""
+    if course_by_id(course["id"]) is None:
+        COURSES.append(dict(course))
 
 
 def owner() -> dict:

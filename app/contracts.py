@@ -23,6 +23,7 @@ class PublicProfile(BaseModel):
     id: str
     name: str
     study_style: StudyStyle
+    study_style_note: str = ""
     radius_meters: int
     anchor: Anchor
     anchor_lat: float

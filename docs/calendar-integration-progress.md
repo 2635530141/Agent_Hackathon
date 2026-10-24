@@ -15,7 +15,9 @@
 
 The user requested this new implementation, independent of the older `shuluun` code, then a new version on their branch. Prior version: `ee427638b1e3aa6f6e3c0b4197ba9af826979886`. Preserve it as an ancestor using an intentional history-only merge, retaining the completed main-based v2 file tree. Then use a normal fast-forward push to `shuluun`, never force-push. Old code remains recoverable by commit; new code has separate commits. Latest main `c69e063` also remains an ancestor.
 
-Publication follows scoped diff/secret-path and regression checks. Draft PR URL and confirmed remote state are recorded after creation. No PR is merged or deployed.
+Publication confirmed: normal fast-forward push `ee42763..e33e073` to remote `shuluun`. `e33e07315b8dd3a310486e5509d02b99d48ec87c` has the exact v2 tree from tested code commit `2b85884`; the history-only merge changed no files. Both prior shuluun and latest main are ancestors. Audit passed for 50 scoped paths, forbidden credential/database paths and credential signatures; protected team Profile/contracts/store/styles/Omnara files match latest main and the working tree was clean.
+
+Draft PR: https://github.com/2635530141/Agent_Hackathon/pull/2 . Verified OPEN, isDraft=true, head=shuluun, base=main, mergeStateStatus=CLEAN. GitHub connector returned 403 for PR creation; authenticated GitHub CLI created it successfully. The PR is attached to this Codex task. No remote CI checks are configured/reported; the 102-pass result is a local run, not a CI claim. This publication-log update is a subsequent documentation-only commit. No PR is merged or deployed.
 
 ## Remaining integration gates
 

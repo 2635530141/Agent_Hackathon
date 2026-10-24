@@ -56,11 +56,6 @@
   {% endif %}
 
   {% if ready %}
-  {% if conflict %}
-    {% with interactive=true %}
-      {% include "partials/conflict.html" %}
-    {% endwith %}
-  {% endif %}
   {% include "partials/rooms.html" %}
   {% endif %}
 </div>

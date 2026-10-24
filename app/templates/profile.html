@@ -9,6 +9,9 @@
   {% if error %}
   <div class="callout warn"><p>{{ error }}</p></div>
   {% endif %}
+  {% if profile.under_18 %}
+  <div class="callout warn"><p>You said you are under 18, so you will not be matched with anyone.</p></div>
+  {% endif %}
   {% if saved %}
   <div class="callout good"><p>Profile saved. Street address and gender stay on this page only.</p></div>
   {% endif %}
@@ -31,7 +34,7 @@
         <label class="field">
           <span class="label">Street address</span>
           <input name="street_address" value="{{ profile.street_address }}" autocomplete="street-address">
-          <span class="hint">Stored for the radius. A match never receives this string.</span>
+          <span class="hint">Needed to center on home. A match never receives this string.</span>
         </label>
         <label class="field">
           <span class="label">Travel radius in meters</span>
@@ -119,6 +122,15 @@
             </select>
           </label>
         </div>
+      </fieldset>
+
+      <fieldset class="stack">
+        <legend class="section-title">Age</legend>
+        <label class="choice">
+          <input type="checkbox" name="under_18" value="1" {% if profile.under_18 %}checked{% endif %}>
+          I am under 18
+        </label>
+        <p class="hint">Students under 18 are not matched.</p>
       </fieldset>
       <div class="cluster">
         <button class="button primary" type="submit">Save profile</button>

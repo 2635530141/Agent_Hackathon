@@ -1,6 +1,6 @@
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Form, Request
+from fastapi import APIRouter, Body, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from app import profile_core, store
@@ -21,6 +21,7 @@ def _form_data(
     gender_preference: str,
     place_types: list[str] | None,
     course_ids: list[str] | None,
+    under_18: str,
 ) -> dict:
     return {
         "study_style": study_style,
@@ -34,6 +35,7 @@ def _form_data(
         "gender_preference": gender_preference,
         "place_types": place_types or [],
         "course_ids": course_ids or [],
+        "under_18": under_18 == "1",
     }
 
 
@@ -68,6 +70,7 @@ def profile_save(
     gender_preference: str = Form(""),
     place_types: list[str] | None = Form(None),
     course_ids: list[str] | None = Form(None),
+    under_18: str = Form(""),
 ):
     try:
         profile_core.update_profile(
@@ -83,6 +86,7 @@ def profile_save(
                 gender_preference,
                 place_types,
                 course_ids,
+                under_18,
             )
         )
     except ValueError as exc:
@@ -102,4 +106,7 @@ def api_private_profile():
 
 @router.put("/api/profile/me")
 def api_update_profile(body: dict = Body(...)):
-    return profile_core.update_profile(body)
+    try:
+        return profile_core.update_profile(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

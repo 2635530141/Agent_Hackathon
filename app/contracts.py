@@ -41,6 +41,7 @@ class PrivateProfile(PublicProfile):
     street_address: str
     gender_self: Gender = ""
     gender_preference: Gender = ""
+    under_18: bool = False
 
 
 class BusyInterval(BaseModel):

@@ -9,9 +9,14 @@ from copy import deepcopy
 
 OWNER_ID = "u_maya"
 
+CAMPUS_LAT = 37.8719
+CAMPUS_LNG = -122.2585
+
 COURSES = [
     {"id": "cs61a", "code": "CS 61A", "name": "Structure and Interpretation of Computer Programs"},
     {"id": "math54", "code": "Math 54", "name": "Linear Algebra and Differential Equations"},
+    {"id": "cs61b", "code": "CS 61B", "name": "Data Structures"},
+    {"id": "data8", "code": "Data 8", "name": "Foundations of Data Science"},
 ]
 
 _owner = {
@@ -31,99 +36,77 @@ _owner = {
     "course_ids": ["cs61a", "math54"],
     "gender_self": "",
     "gender_preference": "",
+    "under_18": False,
 }
 
+
+def _student(
+    sid: str,
+    name: str,
+    *,
+    major: str,
+    year: int,
+    courses: list[str],
+    style: str = "quiet",
+    places: list[str] | None = None,
+    group_size: int = 2,
+    anchor: str = "campus",
+    lat: float = CAMPUS_LAT,
+    lng: float = CAMPUS_LNG,
+    radius: int = 1500,
+    street: str = "",
+    gender_self: str = "",
+    gender_preference: str = "",
+    under_18: bool = False,
+) -> dict:
+    """Full PrivateProfile shape. `first_name` is kept for the proposal card."""
+    return {
+        "id": sid,
+        "name": name,
+        "first_name": name.split()[0],
+        "email": f"{sid.removeprefix('u_')}@example.edu",
+        "study_style": style,
+        "street_address": street,
+        "radius_meters": radius,
+        "anchor": anchor,
+        "anchor_lat": lat,
+        "anchor_lng": lng,
+        "group_size": group_size,
+        "place_types": places or ["coffee", "library"],
+        "major": major,
+        "year": year,
+        "course_ids": courses,
+        "gender_self": gender_self,
+        "gender_preference": gender_preference,
+        "under_18": under_18,
+    }
+
+
+# Eval fixture notes (README §7):
+#   T1  Jordan and Priya take CS 61A.
+#   T5  Jordan and Priya tie: same course, style, major, and year.
+#   A6  Jordan Lee and Jordan Li have near-identical names.
+#   E3  Omar lives 40 km away in Fremont but centers his radius on campus.
+#   E4  Only Lena and Marcus take Data 8.
+#   Gender filter: Aisha prefers women, so she is eligible for Maya only
+#   when Maya sets "I identify as" to woman.
+#   Kai is under 18 and is never eligible.
 _others = [
-    {
-        "id": "u_jordan",
-        "name": "Jordan Lee",
-        "first_name": "Jordan",
-        "year": 3,
-        "major": "EECS",
-        "study_style": "quiet",
-        "radius_meters": 1200,
-        "anchor": "campus",
-        "anchor_lat": 37.8719,
-        "anchor_lng": -122.2585,
-        "group_size": 2,
-        "place_types": ["coffee", "library"],
-        "course_ids": ["cs61a", "math54"],
-    },
-    {
-        "id": "u_sam",
-        "name": "Sam Ortiz",
-        "first_name": "Sam",
-        "year": 2,
-        "major": "Mathematics",
-        "study_style": "talk",
-        "radius_meters": 2000,
-        "anchor": "home",
-        "anchor_lat": 37.8665,
-        "anchor_lng": -122.2600,
-        "group_size": 2,
-        "place_types": ["coffee", "outdoor"],
-        "course_ids": ["cs61a", "math54"],
-    },
-    {
-        "id": "u_priya",
-        "name": "Priya Nair",
-        "first_name": "Priya",
-        "year": 3,
-        "major": "EECS",
-        "study_style": "quiet",
-        "radius_meters": 1500,
-        "anchor": "campus",
-        "anchor_lat": 37.8719,
-        "anchor_lng": -122.2585,
-        "group_size": 2,
-        "place_types": ["library"],
-        "course_ids": ["cs61a"],
-    },
-    {
-        "id": "u_leo",
-        "name": "Leo Park",
-        "first_name": "Leo",
-        "year": 1,
-        "major": "Data Science",
-        "study_style": "drill",
-        "radius_meters": 1000,
-        "anchor": "home",
-        "anchor_lat": 37.8044,
-        "anchor_lng": -122.2712,
-        "group_size": 2,
-        "place_types": ["coffee"],
-        "course_ids": ["cs61a"],
-    },
-    {
-        "id": "u_ana",
-        "name": "Ana Silva",
-        "first_name": "Ana",
-        "year": 3,
-        "major": "Mathematics",
-        "study_style": "quiet",
-        "radius_meters": 2000,
-        "anchor": "campus",
-        "anchor_lat": 37.8719,
-        "anchor_lng": -122.2585,
-        "group_size": 2,
-        "place_types": ["library", "outdoor"],
-        "course_ids": ["math54"],
-    },
-    {
-        "id": "u_ken",
-        "name": "Ken Ito",
-        "first_name": "Ken",
-        "year": 2,
-        "major": "Physics",
-        "study_style": "drill",
-        "radius_meters": 1500,
-        "anchor": "home",
-        "anchor_lat": 37.8770,
-        "anchor_lng": -122.2690,
-        "group_size": 3,
-        "place_types": ["coffee"],
-        "course_ids": ["math54"],
-    },
+    _student("u_jordan", "Jordan Lee", major="EECS", year=3, courses=["cs61a", "math54"]),
+    _student("u_priya", "Priya Natarajan", major="EECS", year=3, courses=["cs61a", "cs61b"]),
+    _student("u_jordanli", "Jordan Li", major="Cognitive Science", year=2, courses=["cs61a"], style="talk", places=["coffee"]),
+    _student("u_sam", "Sam Rivera", major="Mathematics", year=2, courses=["math54"], style="drill", places=["library"], gender_self="nonbinary"),
+    _student("u_aisha", "Aisha Bello", major="EECS", year=3, courses=["cs61a", "math54"], gender_self="woman", gender_preference="woman"),
+    _student("u_ben", "Ben Okafor", major="Data Science", year=1, courses=["cs61a", "data8"], style="talk", group_size=3, places=["coffee", "outdoor"], gender_self="man"),
+    _student("u_lena", "Lena Fischer", major="Statistics", year=2, courses=["data8", "math54"], style="drill", group_size=4, places=["library", "outdoor"], gender_self="woman"),
+    _student("u_marcus", "Marcus Hall", major="Economics", year=1, courses=["data8"], style="talk", group_size=4, places=["coffee"], gender_self="man"),
+    _student("u_omar", "Omar Haddad", major="EECS", year=4, courses=["cs61b", "math54"], street="39100 Paseo Padre Pkwy, Fremont", radius=2000),
+    _student("u_chloe", "Chloe Martin", major="Physics", year=2, courses=["math54"], style="drill", places=["library"], anchor="home", lat=37.8678, lng=-122.2600, street="2425 Durant Ave", radius=1000, gender_self="woman"),
+    _student("u_diego", "Diego Alvarez", major="EECS", year=2, courses=["cs61a", "cs61b"], style="talk", group_size=3, places=["coffee", "library"], anchor="home", lat=37.8760, lng=-122.2604, street="1800 Euclid Ave", radius=2500, gender_self="man"),
+    _student("u_hana", "Hana Sato", major="Mathematics", year=3, courses=["math54", "cs61b"], places=["library", "outdoor"], gender_self="woman", gender_preference="woman"),
+    _student("u_tyler", "Tyler Brooks", major="Business", year=4, courses=["cs61a"], style="drill", places=["coffee"], anchor="home", lat=37.8105, lng=-122.2593, street="500 Grand Ave, Oakland", radius=3000, gender_self="man"),
+    _student("u_nina", "Nina Petrova", major="EECS", year=3, courses=["cs61a", "math54"], style="talk", group_size=3, places=["coffee", "library", "outdoor"], gender_self="woman"),
+    _student("u_kai", "Kai Wong", major="Undeclared", year=1, courses=["cs61a", "math54"], under_18=True),
 ]
 
 _places = [
@@ -211,37 +194,45 @@ _busy = [
 
 _exceptions: list[dict] = []
 
+# Schedules for the seeded students, keyed by Stephen's ids. Titles stay here;
+# matching only gets title-free intervals through schedule_core.
 _student_weekly = {
     "u_jordan": {"tue": ("18:00", "22:00"), "wed": ("19:00", "21:00"), "thu": ("18:00", "21:00")},
-    "u_sam": {"tue": ("17:00", "21:00"), "wed": ("16:00", "20:00"), "thu": ("19:00", "22:00")},
     "u_priya": {"tue": ("19:00", "21:00"), "thu": ("17:00", "21:00")},
-    "u_leo": {"tue": ("18:00", "21:00"), "thu": ("18:00", "21:00")},
-    "u_ana": {"mon": ("17:00", "20:00"), "wed": ("17:00", "21:00"), "thu": ("16:00", "20:00")},
-    "u_ken": {"tue": ("18:00", "21:00"), "wed": ("18:00", "21:00")},
+    "u_jordanli": {"tue": ("19:00", "21:00")},
+    "u_sam": {"wed": ("16:00", "20:00"), "thu": ("19:00", "22:00")},
+    "u_aisha": {"tue": ("18:00", "21:00")},
+    "u_ben": {"tue": ("18:00", "21:00"), "thu": ("18:00", "21:00")},
+    "u_lena": {"wed": ("17:00", "21:00")},
+    "u_marcus": {"wed": ("17:00", "21:00")},
+    "u_omar": {"mon": ("17:00", "20:00"), "wed": ("17:00", "21:00")},
+    "u_chloe": {"wed": ("18:00", "21:00"), "thu": ("16:00", "20:00")},
+    "u_diego": {"tue": ("19:00", "22:00")},
+    "u_hana": {"wed": ("17:00", "20:00")},
+    "u_tyler": {"tue": ("18:00", "21:00")},
+    "u_nina": {"tue": ("17:00", "21:00"), "wed": ("18:00", "21:00")},
+    "u_kai": {"tue": ("18:00", "21:00")},
 }
 
+_MATH54_FINAL = {"course_id": "math54", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "priority": True}
+
 _student_exams = {
-    "u_sam": [
-        {"id": "exam_sam", "course_id": "math54", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "priority": True}
-    ],
-    "u_ana": [
-        {"id": "exam_ana", "course_id": "math54", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "priority": True}
-    ],
+    "u_sam": [{"id": "exam_sam", **_MATH54_FINAL}],
+    "u_lena": [{"id": "exam_lena", **_MATH54_FINAL}],
+    "u_chloe": [{"id": "exam_chloe", **_MATH54_FINAL}],
 }
 
 _student_busy = {
     "u_jordan": [
         {"id": "cal_j1", "source": "calendar", "starts_at": "2026-10-27T18:00", "ends_at": "2026-10-27T19:00", "title": "Lab section"},
     ],
-    "u_sam": [
-        {"id": "exam_sam", "source": "exam", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "title": "Math 54 exam"},
-    ],
     "u_priya": [
         {"id": "cal_p1", "source": "calendar", "starts_at": "2026-10-29T19:00", "ends_at": "2026-10-29T21:00", "title": "Work shift"},
     ],
-    "u_ana": [
-        {"id": "exam_ana", "source": "exam", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "title": "Math 54 exam"},
-    ],
+    **{
+        sid: [{"id": f"exam_{sid[2:]}", "source": "exam", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "title": "Math 54 exam"}]
+        for sid in ("u_sam", "u_lena", "u_chloe")
+    },
 }
 _person_index = 0
 _place_index = 0
@@ -283,6 +274,15 @@ def replace_owner(profile: dict) -> None:
 
 def others() -> list[dict]:
     return deepcopy(_others)
+
+
+def student_by_id(student_id: str) -> dict | None:
+    if student_id == OWNER_ID:
+        return owner()
+    for person in _others:
+        if person["id"] == student_id:
+            return deepcopy(person)
+    return None
 
 
 def places() -> list[dict]:

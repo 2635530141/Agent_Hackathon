@@ -87,6 +87,16 @@
   </section>
 
   <section class="stack">
+    <h2 class="section-title">Range</h2>
+    <figure class="specimen">
+      {% with label="Group size", low_name="demo_low", high_name="demo_high", min=2, max=5, low=2, high=4, unit="people" %}
+        {% include "partials/range_pair.html" %}
+      {% endwith %}
+      <figcaption><code>partials/range_pair.html</code> with <code>/static/range.js</code>: a lower and upper limit on one bar</figcaption>
+    </figure>
+  </section>
+
+  <section class="stack">
     <h2 class="section-title">Chips</h2>
     <figure class="specimen">
       <div class="chips">
@@ -232,4 +242,5 @@
     </figure>
   </section>
 </div>
+<script src="/static/range.js" defer></script>
 {% endblock %}

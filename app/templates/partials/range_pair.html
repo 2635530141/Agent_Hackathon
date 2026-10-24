@@ -1,0 +1,15 @@
+{# Two-handle range. Expects: label, low_name, high_name, min, max, low, high, unit. #}
+{% set span = max - min %}
+<div class="range-pair" data-range-pair data-unit="{{ unit }}" style="--low: {{ (low - min) / span }}; --high: {{ (high - min) / span }};">
+  <div class="range-head">
+    <span class="label">{{ label }}</span>
+    <output class="range-value" aria-live="polite">{% if low == high %}{{ low }}{% else %}{{ low }}–{{ high }}{% endif %} {{ unit }}</output>
+  </div>
+  <div class="range-track">
+    <input type="range" name="{{ low_name }}" min="{{ min }}" max="{{ max }}" step="1" value="{{ low }}" aria-label="{{ label }}: smallest">
+    <input type="range" name="{{ high_name }}" min="{{ min }}" max="{{ max }}" step="1" value="{{ high }}" aria-label="{{ label }}: largest">
+  </div>
+  <div class="range-ticks" aria-hidden="true">
+    {% for value in range(min, max + 1) %}<span>{{ value }}</span>{% endfor %}
+  </div>
+</div>

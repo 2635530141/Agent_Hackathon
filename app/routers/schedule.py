@@ -6,28 +6,31 @@ from fastapi.responses import RedirectResponse
 from app import schedule_core, store
 from app.format import pretty_range
 from app.web import render
-from app.scheduling.demo import demo_owner, FIXTURE_HORIZON
+from app.scheduling.demo import FIXTURE_HORIZON
+from app.scheduling.live_host import owner_access
+from app.scheduling.context import owner_id, live_context
 from app.scheduling.runtime import get_runtime
 from app.scheduling.time import display_zone, local_input, horizon
 from app.scheduling.core.schemas import Actor
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-router = APIRouter(dependencies=[Depends(demo_owner)])
+router = APIRouter(dependencies=[Depends(owner_access)])
 
 
-def _page(request: Request, error: str = "", saved: str = ""):
+def _page(request: Request, error: str = "", saved: str = "", conflict_result=None):
     from secrets import token_urlsafe
     from app.scheduling.week_view import week_payload
     if not request.session.get("calendar_editor_csrf"):
         request.session["calendar_editor_csrf"] = token_urlsafe(32)
-    selected = request.query_params.get("day", "2026-10-29")
+    default_day = datetime.now(ZoneInfo(display_zone())).date().isoformat() if live_context() else "2026-10-29"
+    selected = request.query_params.get("day", default_day)
     try:
         day = date.fromisoformat(selected)
     except ValueError:
         day = date(2026, 10, 29)
         error = "Choose a valid date."
-    availability = schedule_core.effective_availability(store.OWNER_ID, day.isoformat()+"T00:00", (day+timedelta(days=1)).isoformat()+"T00:00")
+    availability = schedule_core.effective_availability(owner_id(), day.isoformat()+"T00:00", (day+timedelta(days=1)).isoformat()+"T00:00")
     blocks = []
     for block in schedule_core.list_busy():
         item = block.model_dump()
@@ -64,22 +67,28 @@ def _page(request: Request, error: str = "", saved: str = ""):
         exams=exam_rows,
         blocks=blocks,
         match_blocks=match_blocks,
-        courses=store.courses(),
+        courses=[] if live_context() else store.courses(),
         calendar=schedule_core.calendar_status(),
         error=error,
         saved=saved,
         timezone=display_zone(), availability=availability, selected_day=day.isoformat(),
-        overnight={schedule_core.DAYS[r.weekday]:r.ends_next_day for r in get_runtime().repository.list_records(store.OWNER_ID,"weekly-rules")},
+        overnight={schedule_core.DAYS[r.weekday]:r.ends_next_day for r in get_runtime().repository.list_records(owner_id(),"weekly-rules")},
         free_rows=[pretty_range(local_input(i.start),local_input(i.end)) for i in availability.available],
-        calendar_week=week_payload(get_runtime().service,store.OWNER_ID,day),
+        calendar_week=week_payload(get_runtime().service,owner_id(),day),
         editor_csrf=request.session["calendar_editor_csrf"],
         today=datetime.now(ZoneInfo(display_zone())).date().isoformat(),
+        conflict_result=conflict_result,
     )
 
 
 @router.get("/schedule")
 def schedule_page(request: Request, error: str = "", saved: str = ""):
     return _page(request, error, saved)
+
+
+@router.get("/schedule/google-setup")
+def google_setup(request: Request):
+    return render(request,"calendar_setup.html",nav="schedule")
 
 
 @router.post("/schedule/hours")
@@ -146,6 +155,8 @@ def connect_calendar(request: Request):
     actor = getattr(request.state,"calendar_actor",None)
     active = getattr(request.app.state,"google_calendar_integration",None)
     if isinstance(actor,GoogleActor) and isinstance(active,GoogleCalendarIntegration):
+        if live_context():
+            return RedirectResponse("/calendar/google/connect",status_code=303)
         csrf = request.headers.get("x-csrf-token","")
         if not compare_digest(csrf.encode(),actor.csrf_token.encode()):
             from fastapi import HTTPException
@@ -174,19 +185,65 @@ def edit_exception(exception_id: str, starts_at: str = Form(...), ends_at: str =
 
 
 @router.post("/schedule/calendar/refresh")
-def refresh_synthetic_calendar():
+def refresh_synthetic_calendar(day: str = Form("")):
     # Refresh the known synthetic pool together so a fresh owner snapshot does
     # not leave candidate fixtures stale. This never contacts a real provider.
     runtime = get_runtime()
-    for user_id in [store.OWNER_ID, *(person["id"] for person in store.others())]:
-        runtime.service.refresh_calendar(Actor(subject_id=user_id), FIXTURE_HORIZON)
-    return RedirectResponse("/schedule?saved=synthetic-refresh", status_code=303)
+    context = live_context()
+    if context:
+        from app.scheduling.google_storage import GoogleStateError
+        try:
+            context.host.active.refresh(context.actor)
+        except GoogleStateError:
+            return RedirectResponse("/schedule?error=Reconnect+Google+Calendar+and+retry",303)
+    else:
+        for user_id in [owner_id(), *(person["id"] for person in store.others())]:
+            runtime.service.refresh_calendar(Actor(subject_id=user_id), FIXTURE_HORIZON)
+    try:
+        selected = date.fromisoformat(day).isoformat()
+    except ValueError:
+        selected = ""
+    query = f"day={selected}&" if selected else ""
+    saved = "google-refresh" if context else "synthetic-refresh"
+    return RedirectResponse(f"/schedule?{query}saved={saved}", status_code=303)
+
+
+@router.post("/schedule/calendar/disconnect")
+def disconnect_calendar():
+    context = live_context()
+    if not context:
+        from fastapi import HTTPException
+        raise HTTPException(409,"GOOGLE_NOT_CONFIGURED")
+    context.host.active.disconnect(context.actor)
+    return RedirectResponse("/schedule?saved=disconnected",303)
+
+
+@router.post("/schedule/timezone")
+def save_timezone(timezone: str = Form(...)):
+    context = live_context()
+    if not context:
+        from fastapi import HTTPException
+        raise HTTPException(409,"PRIVATE_ACCOUNT_REQUIRED")
+    try:
+        context.host.accounts.set_timezone(owner_id(),timezone)
+    except (ValueError,KeyError):
+        return RedirectResponse("/schedule?error=Choose+a+valid+IANA+timezone",303)
+    return RedirectResponse("/schedule?saved=timezone",303)
+
+
+@router.post("/schedule/check")
+def check_own_time(request: Request, starts_at: str = Form(...), ends_at: str = Form(...)):
+    try:
+        result = schedule_core.own_conflict(starts_at,ends_at,False)
+    except ValueError:
+        return _page(request,error="Choose a valid interval and resolve any DST ambiguity.")
+    return _page(request,conflict_result=result or {"message":"No blocking conflict in the checked calendar/manual schedule."})
 
 
 @router.get("/api/schedule/availability")
 def api_availability(starts_at: str, ends_at: str, duration_minutes: int = 1):
     try:
-        return schedule_core.effective_availability(store.OWNER_ID, starts_at, ends_at, duration_minutes)
+        return schedule_core.effective_availability(owner_id(), starts_at, ends_at, duration_minutes)
     except ValueError:
         from fastapi import HTTPException
         raise HTTPException(422, "INVALID_INTERVAL_OR_DURATION") from None

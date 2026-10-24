@@ -1,40 +1,12 @@
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Form, Request
+from fastapi import APIRouter, Body, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from app import profile_core, store
 from app.web import render
 
 router = APIRouter()
-
-
-def _form_data(
-    study_style: str,
-    street_address: str,
-    radius_meters: str,
-    anchor: str,
-    group_size: str,
-    major: str,
-    year: str,
-    gender_self: str,
-    gender_preference: str,
-    place_types: list[str] | None,
-    course_ids: list[str] | None,
-) -> dict:
-    return {
-        "study_style": study_style,
-        "street_address": street_address,
-        "radius_meters": radius_meters,
-        "anchor": anchor,
-        "group_size": group_size,
-        "major": major,
-        "year": year,
-        "gender_self": gender_self,
-        "gender_preference": gender_preference,
-        "place_types": place_types or [],
-        "course_ids": course_ids or [],
-    }
 
 
 @router.get("/profile")
@@ -48,8 +20,13 @@ def profile_page(request: Request, error: str = "", saved: int = 0):
         profile=profile,
         public=public,
         courses=store.courses(),
-        style_labels=profile_core.STYLE_LABELS,
+        course_text=profile_core.course_codes(profile.course_ids),
+        maps_connected=profile_core.maps_connected(),
+        anchor_map=profile_core.maps_url(profile.anchor_lat, profile.anchor_lng),
+        style_labels={key: profile_core.STYLE_LABELS[key] for key in profile_core.STUDY_STYLES},
         place_labels=profile_core.PLACE_LABELS,
+        gender_labels=profile_core.GENDER_LABELS,
+        group_sizes=list(profile_core.GROUP_SIZES),
         error=error,
         saved=bool(saved),
     )
@@ -57,33 +34,39 @@ def profile_page(request: Request, error: str = "", saved: int = 0):
 
 @router.post("/profile")
 def profile_save(
-    study_style: str = Form(...),
+    study_styles: list[str] | None = Form(None),
+    study_style_note: str = Form(""),
     street_address: str = Form(""),
     radius_meters: str = Form(...),
-    anchor: str = Form(...),
-    group_size: str = Form(...),
+    group_min: str = Form(...),
+    group_max: str = Form(...),
+    place_types: list[str] | None = Form(None),
+    place_note: str = Form(""),
     major: str = Form(...),
     year: str = Form(...),
+    courses: str = Form(""),
     gender_self: str = Form(""),
-    gender_preference: str = Form(""),
-    place_types: list[str] | None = Form(None),
-    course_ids: list[str] | None = Form(None),
+    gender_preference: list[str] | None = Form(None),
+    under_18: str = Form(""),
 ):
     try:
         profile_core.update_profile(
-            _form_data(
-                study_style,
-                street_address,
-                radius_meters,
-                anchor,
-                group_size,
-                major,
-                year,
-                gender_self,
-                gender_preference,
-                place_types,
-                course_ids,
-            )
+            {
+                "study_styles": study_styles or [],
+                "study_style_note": study_style_note,
+                "street_address": street_address,
+                "radius_meters": radius_meters,
+                "group_min": group_min,
+                "group_max": group_max,
+                "place_types": place_types or [],
+                "place_note": place_note,
+                "major": major,
+                "year": year,
+                "courses": courses,
+                "gender_self": gender_self,
+                "gender_preference": gender_preference or [],
+                "under_18": under_18 == "1",
+            }
         )
     except ValueError as exc:
         return RedirectResponse(f"/profile?error={quote(str(exc))}", status_code=303)
@@ -102,4 +85,7 @@ def api_private_profile():
 
 @router.put("/api/profile/me")
 def api_update_profile(body: dict = Body(...)):
-    return profile_core.update_profile(body)
+    try:
+        return profile_core.update_profile(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

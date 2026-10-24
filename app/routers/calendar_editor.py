@@ -6,13 +6,14 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict
 from typing import Literal
 from app import schedule_core, store
-from app.scheduling.demo import demo_owner
+from app.scheduling.live_host import owner_access
+from app.scheduling.context import owner_id, live_context
 from app.scheduling.runtime import get_runtime
 from app.scheduling.time import parse_instant, display_zone
 from app.scheduling.week_view import week_payload
 
-router = APIRouter(prefix="/api/schedule",dependencies=[Depends(demo_owner)])
-form_router = APIRouter(dependencies=[Depends(demo_owner)])
+router = APIRouter(prefix="/api/schedule",dependencies=[Depends(owner_access)])
+form_router = APIRouter(dependencies=[Depends(owner_access)])
 
 
 class Entry(BaseModel):
@@ -36,7 +37,7 @@ def editor_csrf(request, form_token=None):
 @router.get("/week")
 def week(day: date):
     try:
-        return week_payload(get_runtime().service,store.OWNER_ID,day)
+        return week_payload(get_runtime().service,owner_id(),day)
     except ValueError:
         raise HTTPException(422,"INVALID_WEEK") from None
 
@@ -62,7 +63,7 @@ def apply_entry(body):
                 raise ValueError("weekly edit must keep its weekday")
             hours = schedule_core.weekly_hours()
             hours[day] = (a.strftime("%H:%M"),b.strftime("%H:%M"))
-            rules = get_runtime().repository.list_records(store.OWNER_ID,"weekly-rules")
+            rules = get_runtime().repository.list_records(owner_id(),"weekly-rules")
             overnight = {schedule_core.DAYS[r.weekday]:r.ends_next_day for r in rules}
             overnight[day] = b.date()!=a.date()
             schedule_core.save_weekly(hours,overnight=overnight)
@@ -92,7 +93,7 @@ def remove_entry(kind, record_id):
             raise HTTPException(422,"INVALID_WEEKDAY")
         hours = schedule_core.weekly_hours()
         hours[schedule_core.DAYS[int(record_id)]] = ("","")
-        rules = get_runtime().repository.list_records(store.OWNER_ID,"weekly-rules")
+        rules = get_runtime().repository.list_records(owner_id(),"weekly-rules")
         schedule_core.save_weekly(hours,overnight={schedule_core.DAYS[r.weekday]:r.ends_next_day for r in rules})
     else:
         if kind=="exam": schedule_core.remove_exam(record_id)

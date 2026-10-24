@@ -7,6 +7,7 @@ from app.contracts import BusyInterval, Exam, MatchBusyInterval
 from .core.schemas import Actor, ExamInput, ExceptionInput, Horizon, TrustedMatchContext, WeeklyRuleInput
 from .core.storage import records
 from .runtime import get_runtime
+from .context import owner_id, live_context
 from .time import display_zone, horizon, local_input, local_iso, parse_instant, slot
 
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -20,7 +21,8 @@ def _exam_view(exam):
         priority_starts_at=local_iso(exam.priority_start) if exam.priority_start else None)
 
 
-def list_exams(student_id: str = store.OWNER_ID) -> list[Exam]:
+def list_exams(student_id: str | None = None) -> list[Exam]:
+    student_id = student_id or owner_id()
     return [_exam_view(e) for e in get_runtime().repository.list_records(student_id, "exams")]
 
 
@@ -41,22 +43,25 @@ def _blocks(student_id, private=False):
 
 
 def list_busy() -> list[BusyInterval]:
-    return [BusyInterval(**b) for b in _blocks(store.OWNER_ID, private=True)]
+    return [BusyInterval(**b) for b in _blocks(owner_id(), private=True)]
 
 
-def list_busy_for_match(student_id: str = store.OWNER_ID) -> list[MatchBusyInterval]:
+def list_busy_for_match(student_id: str | None = None) -> list[MatchBusyInterval]:
+    student_id = student_id or owner_id()
     return [MatchBusyInterval(**b) for b in _blocks(student_id)]
 
 
-def weekly_hours(student_id: str = store.OWNER_ID) -> dict[str, tuple[str, str]]:
+def weekly_hours(student_id: str | None = None) -> dict[str, tuple[str, str]]:
+    student_id = student_id or owner_id()
     values = {d: ("", "") for d in DAYS}
     for rule in get_runtime().repository.list_records(student_id, "weekly-rules"):
         values[DAYS[rule.weekday]] = (rule.start_local.isoformat(timespec="minutes"), rule.end_local.isoformat(timespec="minutes"))
     return values
 
 
-def save_weekly(hours: dict[str, tuple[str, str]], student_id: str = store.OWNER_ID,
+def save_weekly(hours: dict[str, tuple[str, str]], student_id: str | None = None,
                 timezone_name: str | None = None, overnight: dict | None = None) -> None:
+    student_id = student_id or owner_id()
     validated = []
     for number, day in enumerate(DAYS):
         start, end = hours.get(day, ("", ""))
@@ -76,28 +81,30 @@ def save_weekly(hours: dict[str, tuple[str, str]], student_id: str = store.OWNER
 
 def create_exam(course_id: str, starts_at: str, ends_at: str, priority: bool,
                 priority_starts_at: str | None = None) -> Exam:
-    if store.course_by_id(course_id) is None or course_id not in store.owner()["course_ids"]:
+    course_id = canonical_course_id(course_id)
+    if not valid_course(course_id):
         raise ValueError("Pick one of your courses for the exam.")
     if priority and not priority_starts_at:
         raise ValueError("Choose an explicit priority start; no default pre-exam duration is assumed.")
     value = ExamInput(course_id=course_id, start=parse_instant(starts_at), end=parse_instant(ends_at),
                      priority_start=parse_instant(priority_starts_at) if priority_starts_at else None)
-    return _exam_view(get_runtime().repository.create_record(store.OWNER_ID, "exams", value))
+    return _exam_view(get_runtime().repository.create_record(owner_id(), "exams", value))
 
 
 def update_exam(exam_id: str, course_id: str, starts_at: str, ends_at: str, priority_starts_at: str | None = None):
-    if store.course_by_id(course_id) is None or course_id not in store.owner()["course_ids"]:
+    course_id = canonical_course_id(course_id)
+    if not valid_course(course_id):
         raise ValueError("Pick one of your courses for the exam.")
     value = ExamInput(course_id=course_id, start=parse_instant(starts_at), end=parse_instant(ends_at),
                      priority_start=parse_instant(priority_starts_at) if priority_starts_at else None)
-    result = get_runtime().repository.patch_record(store.OWNER_ID, "exams", exam_id, value.model_dump())
+    result = get_runtime().repository.patch_record(owner_id(), "exams", exam_id, value.model_dump())
     if result is None:
         raise ValueError("Exam not found for this owner.")
     return _exam_view(result)
 
 
 def remove_exam(exam_id: str) -> None:
-    get_runtime().repository.delete_record(store.OWNER_ID, "exams", exam_id)
+    get_runtime().repository.delete_record(owner_id(), "exams", exam_id)
 
 
 def create_exception(starts_at: str, ends_at: str, kind: str) -> None:
@@ -105,7 +112,7 @@ def create_exception(starts_at: str, ends_at: str, kind: str) -> None:
         raise ValueError("A one-off slot is either free or busy.")
     value = ExceptionInput(start=parse_instant(starts_at), end=parse_instant(ends_at),
                            kind="available" if kind == "free" else "unavailable")
-    get_runtime().repository.create_record(store.OWNER_ID, "exceptions", value)
+    get_runtime().repository.create_record(owner_id(), "exceptions", value)
 
 
 def update_exception(exception_id: str, starts_at: str, ends_at: str, kind: str):
@@ -113,16 +120,18 @@ def update_exception(exception_id: str, starts_at: str, ends_at: str, kind: str)
         raise ValueError("A one-off slot is either free or busy.")
     value = ExceptionInput(start=parse_instant(starts_at), end=parse_instant(ends_at),
                            kind="available" if kind == "free" else "unavailable")
-    if get_runtime().repository.patch_record(store.OWNER_ID, "exceptions", exception_id, value.model_dump()) is None:
+    if get_runtime().repository.patch_record(owner_id(), "exceptions", exception_id, value.model_dump()) is None:
         raise ValueError("Slot not found for this owner.")
 
 
 def remove_exception(exception_id: str) -> None:
-    get_runtime().repository.delete_record(store.OWNER_ID, "exceptions", exception_id)
+    get_runtime().repository.delete_record(owner_id(), "exceptions", exception_id)
 
 
 def effective_availability(student_id: str, starts_at: str, ends_at: str, duration_minutes: int = 1):
     """Trusted server-only matching API. Profile establishes the eligible pool."""
+    if live_context():
+        return get_runtime().service.effective_availability(Actor(subject_id=owner_id()), student_id, horizon(starts_at, ends_at), duration_minutes)
     from app.profile_core import eligible_student_ids
     context = TrustedMatchContext(eligible_subject_ids=frozenset([store.OWNER_ID, *eligible_student_ids()]))
     return get_runtime().service.effective_availability(context, student_id, horizon(starts_at, ends_at), duration_minutes)
@@ -135,8 +144,13 @@ def matching_free_time(student_id, start, end):
 
 def own_conflict(starts_at: str, ends_at: str, study_anyway: bool) -> dict | None:
     requested = slot(starts_at, ends_at)  # Validate before considering any override.
-    search = Horizon(start=requested.start, end=requested.start + timedelta(days=14))
-    result = get_runtime().service.check_slot(Actor(subject_id=store.OWNER_ID), requested, search)
+    search_end = requested.start + timedelta(days=14)
+    if live_context():
+        coverage_end = get_runtime().repository.read_bundle(owner_id())["state"]["coverage_end"]
+        if coverage_end and requested.end <= coverage_end:
+            search_end = min(search_end,coverage_end)
+    search = Horizon(start=requested.start, end=search_end)
+    result = get_runtime().service.check_slot(Actor(subject_id=owner_id()), requested, search)
     if not result.blocked:
         return None
     titles = [c.owner_only_private_title for c in result.conflicts if c.owner_only_private_title]
@@ -156,6 +170,20 @@ def connect_calendar() -> None:
 
 
 def calendar_status() -> dict:
+    context = live_context()
+    if context:
+        return context.host.status(context.actor)
     return {"connected":False, "horizon":"synthetic fixture only", "access":"Primary calendar read-only is not connected",
             "mode":"synthetic", "configuration_status":"not_configured", "callback_uri":"http://127.0.0.1:8011/calendar/google/callback",
             "message":"Synthetic schedules only. Google not configured; team identity integration required."}
+
+
+def valid_course(course_id):
+    if live_context():
+        # Private preview accepts the owner's exam label; no Profile is fabricated.
+        return 1 <= len(course_id.strip()) <= 80 and not any(c in course_id for c in "<>\r\n")
+    return store.course_by_id(course_id) is not None and course_id in store.owner()["course_ids"]
+
+
+def canonical_course_id(value):
+    return "".join(value.split()).upper() if live_context() else value

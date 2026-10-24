@@ -7,7 +7,7 @@
   <div class="stack">
     <h1 class="title">Schedule and calendar</h1>
     <p class="lede">Make room for your next study session.</p>
-    <div class="callout warn"><p>Synthetic calendar data only · {{ timezone }}. Demo sign-in is enabled; real calendar accounts are not available. This demo identity cannot connect a real Google account.</p></div>
+    {% if not private_calendar %}<div class="callout warn"><p>Synthetic calendar data only · {{ timezone }}. Demo sign-in is enabled; real calendar accounts are not available. This demo identity cannot connect a real Google account.</p></div>{% else %}<p class="hint">Private Google + manual schedule preview · {{ timezone }}. Confirmed StudyMate sessions are not connected in this preview.</p>{% endif %}
   </div>
   {% if error %}
   <div class="callout warn"><p>{{ error }}</p></div>
@@ -16,6 +16,7 @@
   <div class="callout good"><p>Saved.</p></div>
   {% endif %}
 
+  {% include "partials/calendar_connection.html" %}
   {% include "partials/calendar_week.html" %}
   <details class="calendar-details card">
   <summary>Detailed editors, effective free time and private records</summary>
@@ -29,7 +30,7 @@
     {% for warning in availability.warnings %}<p class="hint">{{ warning }}</p>{% endfor %}
   </section>
 
-  <form method="post" action="/schedule/hours" class="card stack">
+  <form method="post" action="/schedule/hours" class="card stack">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
     <h2>Weekly hours</h2>
     <ul class="hours">
       {% for day in days %}
@@ -52,12 +53,12 @@
       {% for exam in exams %}
       <li class="busy-row">
         <span>{{ exam.course_code }} · {{ exam.when }}{% if exam.priority %} · priority from {{ exam.priority_when }}{% endif %}</span>
-        <form method="post" action="/schedule/exams/{{ exam.id }}/delete">
+        <form method="post" action="/schedule/exams/{{ exam.id }}/delete">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
           <button class="button quiet" type="submit">Remove</button>
         </form>
       </li>
       <li><details><summary>Edit {{ exam.course_code }} exam</summary>
-        <form method="post" action="/schedule/exams/{{ exam.id }}/edit" class="stack">
+        <form method="post" action="/schedule/exams/{{ exam.id }}/edit" class="stack">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
           <input type="hidden" name="course_id" value="{{ exam.course_id }}">
           <label class="field"><span class="label">Exam starts ({{ timezone }})</span><input type="datetime-local" name="starts_at" value="{{ exam.start_local }}" required></label>
           <label class="field"><span class="label">Exam ends</span><input type="datetime-local" name="ends_at" value="{{ exam.end_local }}" required></label>
@@ -67,15 +68,15 @@
       </details></li>
       {% endfor %}
     </ul>
-    <form method="post" action="/schedule/exams" class="stack">
+    <form method="post" action="/schedule/exams" class="stack">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
       <div class="split">
         <label class="field">
           <span class="label">Course</span>
-          <select name="course_id">
+          {% if private_calendar %}<input name="course_id" placeholder="Course or exam label" maxlength="80" required>{% else %}<select name="course_id">
             {% for course in courses %}
             <option value="{{ course.id }}">{{ course.code }}</option>
             {% endfor %}
-          </select>
+          </select>{% endif %}
         </label>
         <label class="field">
           <span class="label">Starts</span>
@@ -94,7 +95,7 @@
 
   <section class="card stack">
     <h2>One-off slots</h2>
-    <form method="post" action="/schedule/exceptions" class="stack">
+    <form method="post" action="/schedule/exceptions" class="stack">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
       <div class="split">
         <label class="field">
           <span class="label">Starts</span>
@@ -121,10 +122,10 @@
       <h2>Your time records</h2>
       <p class="hint">Titles stay on this page.</p>
       <div class="callout warn"><p>{{ calendar.message }} Only the primary calendar will be checked when enabled.</p></div>
-      <form method="post" action="/schedule/calendar">
+      <form method="post" action="/schedule/calendar">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
         <button class="button" type="submit">Connect Google Calendar</button>
       </form>
-      <form method="post" action="/schedule/calendar/refresh"><button class="button quiet" type="submit">Refresh synthetic snapshot</button></form>
+      <form method="post" action="/schedule/calendar/refresh">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}<input type="hidden" name="day" value="{{ selected_day }}"><button class="button quiet" type="submit">{{ "Refresh Google Calendar" if private_calendar else "Refresh synthetic snapshot" }}</button></form>
       <ul class="busy-list">
         {% for block in blocks %}
         <li class="busy-row">
@@ -132,12 +133,12 @@
           <span class="chip">{{ block.source }}</span>
           <span class="meta">{{ block.title or "No title" }}{% if block.kind == "free" %} · free{% endif %}</span>
           {% if block.source == "exception" %}
-          <details><summary>Edit one-off slot</summary><form method="post" action="/schedule/exceptions/{{ block.id }}/edit" class="stack">
+          <details><summary>Edit one-off slot</summary><form method="post" action="/schedule/exceptions/{{ block.id }}/edit" class="stack">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
             <label class="field"><span class="label">Starts</span><input type="datetime-local" name="starts_at" value="{{ block.start_local }}" required></label>
             <label class="field"><span class="label">Ends</span><input type="datetime-local" name="ends_at" value="{{ block.end_local }}" required></label>
             <label class="field"><span class="label">Kind</span><select name="kind"><option value="busy" {% if block.kind != "free" %}selected{% endif %}>Busy</option><option value="free" {% if block.kind == "free" %}selected{% endif %}>Extra free time</option></select></label><button class="button" type="submit">Save slot changes</button>
           </form></details>
-          <form method="post" action="/schedule/exceptions/{{ block.id }}/delete">
+          <form method="post" action="/schedule/exceptions/{{ block.id }}/delete">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
             <button class="button quiet" type="submit">Remove</button>
           </form>
           {% endif %}

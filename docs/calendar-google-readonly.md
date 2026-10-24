@@ -1,5 +1,10 @@
 # M2 read-only Google Calendar — implementation and live boundary
 
+Historical M2 baseline below. The newer private user connection host and actual
+read verification are documented in [Google user connection](calendar-google-user-connect.md).
+The default synthetic app remains isolated; the private preview now supplies its
+own explicit composition using the existing local login responsibility.
+
 This file describes the M2 read-only baseline continued from M1.5 commit `0e1f0e9`, without importing the older shuluun implementation. M2 code and mocked HTTP/OAuth tests exist. **No real Google account has been connected or read.** The later M3 executor and incremental owned-event consent now exist; see [M3 handoff](calendar-writeback-handoff.md). Initial consent stays read-only and the current synthetic host still cannot write/delete real events.
 
 ## What is implemented

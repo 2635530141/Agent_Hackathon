@@ -4,7 +4,7 @@
 <div class="hero">
   <div class="stack-lg">
     <div class="stack">
-      <p class="meta">For the course, the exam, and the empty Thursday</p>
+      {% if private_calendar %}<p class="meta">Private calendar preview</p><h1 class="title">Your study hours and Google calendar, together.</h1><p class="lede">Sign in, then connect your own Google account. This local preview reads only your primary calendar. Team matching, invitations and calendar export are not enabled here.</p>{% else %}<p class="meta">For the course, the exam, and the empty Thursday</p>
       <h1 class="title">Find a study mate. Approve the invite yourself.</h1>
       <p class="lede">StudyMate looks for someone in your course who is free at the same time, suggests a place you can both reach, and sends nothing until you say so.</p>
     </div>
@@ -21,6 +21,7 @@
       <dt>They answer</dt>
       <dd>Each student gets their own accept or decline link.</dd>
     </dl>
+    {% endif %}
   </div>
 
   <section class="card stack" aria-labelledby="auth-title">
@@ -33,7 +34,7 @@
     {% endif %}
     {% if mode == "register" %}
     <h2 id="auth-title" class="section-title">Create an account</h2>
-    <form class="stack" method="post" action="/register">
+    <form class="stack" method="post" action="/register">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
       <label class="field">
         <span class="label">Name</span>
         <input name="name" autocomplete="name" required value="{{ full_name }}">
@@ -44,13 +45,13 @@
       </label>
       <label class="field">
         <span class="label">Password</span>
-        <input name="password" type="password" autocomplete="new-password" required minlength="8">
+        <input name="password" type="password" autocomplete="new-password" required minlength="{{ 12 if private_calendar else 8 }}">
       </label>
       <button class="button primary" type="submit">Create account</button>
     </form>
     {% else %}
     <h2 id="auth-title" class="section-title">Sign in</h2>
-    <form class="stack" method="post" action="/login">
+    <form class="stack" method="post" action="/login">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
       <label class="field">
         <span class="label">Email</span>
         <input name="email" type="email" autocomplete="username" required value="{{ email }}">
@@ -61,11 +62,11 @@
       </label>
       <button class="button primary" type="submit">Sign in</button>
     </form>
-    <div class="callout">
+    {% if test_email %}<div class="callout">
       <p><strong>Test account</strong></p>
       <p>{{ test_email }}</p>
       <p class="hint">Password {{ test_password }}</p>
-    </div>
+    </div>{% endif %}
     {% endif %}
   </section>
 </div>

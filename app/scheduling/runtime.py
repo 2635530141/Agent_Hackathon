@@ -28,5 +28,15 @@ def build_runtime(database_url=None):
 
 
 @lru_cache(maxsize=1)
-def get_runtime():
+def _synthetic_runtime():
     return build_runtime()
+
+
+def get_runtime():
+    from .context import live_context
+    context = live_context()
+    return context.runtime if context else _synthetic_runtime()
+
+
+get_runtime.cache_clear = _synthetic_runtime.cache_clear
+get_runtime.cache_info = _synthetic_runtime.cache_info

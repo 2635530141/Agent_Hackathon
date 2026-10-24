@@ -9,7 +9,7 @@ from app.scheduling.google_storage import GoogleStateError
 router = APIRouter(prefix="/calendar/google",tags=["calendar-read-only"])
 
 
-def authenticated_calendar_owner(request: Request):
+async def authenticated_calendar_owner(request: Request):
     # Only trusted server middleware may assign this state. No fake owner, query ID,
     # X-User header, bearer string, or browser 'trusted=true' establishes identity.
     actor = getattr(request.state,"calendar_actor",None)
@@ -17,6 +17,8 @@ def authenticated_calendar_owner(request: Request):
         raise HTTPException(409,"TEAM_AUTH_INTEGRATION_REQUIRED")
     if request.method not in {"GET","HEAD"}:
         csrf = request.headers.get("x-csrf-token","")
+        if not csrf and request.headers.get("content-type","").startswith("application/x-www-form-urlencoded"):
+            csrf = str((await request.form()).get("csrf_token",""))
         origin = request.headers.get("origin")
         if (not compare_digest(csrf.encode(),actor.csrf_token.encode()) or
             (origin and origin!=f"{request.url.scheme}://{request.url.netloc}")):
@@ -55,6 +57,12 @@ def callback(request: Request, actor=Depends(authenticated_calendar_owner)):
         raise HTTPException(400,"OAUTH_NOT_COMPLETED_OR_STATE_INVALID") from None
     if context and context.get("purpose")=="write":
         return RedirectResponse("/session?notice=Calendar+permission+updated.+Review+the+current+session+and+confirm+separately.",status_code=303)
+    if getattr(request.app.state,"private_calendar_host",None):
+        # A failed refresh remains unknown/stale in the service, never empty/free.
+        try:
+            active.refresh(actor)
+        except GoogleStateError:
+            return RedirectResponse("/schedule?error=Google+connected.+Refresh+failed%3B+reconnect+or+retry.",303)
     return RedirectResponse("/schedule?saved=google-read-consent",status_code=303)
 
 

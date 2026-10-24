@@ -321,3 +321,13 @@ def test_room_cards_show_address_and_map_link(monkeypatch, online):
 def test_street_number_without_a_street_is_left_out():
     assert places._osm_address({"house_number": "2730", "city": "Berkeley"}) == "Berkeley"
     assert places._osm_address({"house_number": "2523", "road": "Durant Avenue", "city": "Berkeley"}) == "2523 Durant Avenue, Berkeley"
+
+
+def test_room_settings_offer_real_places_and_accept_them(monkeypatch):
+    from app.routers import session
+
+    real = {**REAL[0], "quality": 3}
+    monkeypatch.setattr(session.live_places, "nearby", lambda kind, lat, lng, radius: [real] if kind == "library" else [])
+    names = [choice["name"] for choice in session._room_choices()["place_choices"]]
+    assert names[0] == "Late Library"
+    assert {place["name"] for place in store.places()} <= set(names)  # Demo places stay available.

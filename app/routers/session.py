@@ -937,6 +937,22 @@ def open_room(
     )
 
 
+PLACES_PER_KIND = 3
+
+
+def _place_options() -> list[dict]:
+    """Places a host can pick: the best-documented real places of each kind nearby, then the demo places."""
+    host = public_profile()
+    options: dict[str, dict] = {}
+    for kind in PLACE_LABELS:
+        found = live_places.nearby(kind, host.anchor_lat, host.anchor_lng, host.radius_meters)
+        for place in sorted(found, key=lambda item: -item.get("quality", 0))[:PLACES_PER_KIND]:
+            options.setdefault(place["name"], place)
+    for place in store.places():
+        options.setdefault(place["name"], place)
+    return list(options.values())
+
+
 def _room_choices() -> dict:
     """What a host can pick in Room settings: subjects or their courses, and the known places."""
     owned = _profile_courses() or store.courses()
@@ -944,7 +960,7 @@ def _room_choices() -> dict:
     return {
         "subject_choices": [*subjects[-1:], *subjects[:-1], *({"id": c["id"], "label": c["code"]} for c in owned)],
         "place_choices": [{"name": place["name"], "kind": place["kind"], "label": f"{place['name']} ({PLACE_LABELS[place['kind']]})"}
-                          for place in store.places()],
+                          for place in _place_options()],
     }
 
 
@@ -977,7 +993,7 @@ def change_room_settings(
 ):
     keep = dict(sentence=sentence, open_room=room_id)
     chosen = _picked_time(room_day, room_start, room_end)
-    place = next((item for item in store.places() if item["name"] == room_place), None)
+    place = next((item for item in _place_options() if item["name"] == room_place), None)
     try:
         capacity = int(room_capacity)
     except ValueError:

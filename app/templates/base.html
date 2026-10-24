@@ -9,14 +9,27 @@
 <body>
   <header class="site-header">
     <a class="wordmark" href="/">StudyMate</a>
-    <nav class="site-nav" aria-label="Sections">
-      <a href="/profile" {% if nav == "profile" %}aria-current="page"{% endif %}>Profile</a>
-      <a href="/schedule" {% if nav == "schedule" %}aria-current="page"{% endif %}>Schedule</a>
-      <a href="/matching" {% if nav == "matching" %}aria-current="page"{% endif %}>Matching</a>
-      <a href="/session" {% if nav == "session" %}aria-current="page"{% endif %}>Session</a>
-      <a href="/invite" {% if nav == "invite" %}aria-current="page"{% endif %}>Invite</a>
-      <a href="/style" {% if nav == "style" %}aria-current="page"{% endif %}>Style</a>
+    {% if user %}
+    <div class="cluster">
+      <nav class="site-nav" aria-label="Sections">
+        <a href="/home" {% if nav == "home" %}aria-current="page"{% endif %}>Home</a>
+        <a href="/profile" {% if nav == "profile" %}aria-current="page"{% endif %}>Profile</a>
+        <a href="/schedule" {% if nav == "schedule" %}aria-current="page"{% endif %}>Schedule</a>
+        <a href="/matching" {% if nav == "matching" %}aria-current="page"{% endif %}>Matching</a>
+        <a href="/session" {% if nav == "session" %}aria-current="page"{% endif %}>Session</a>
+        <a href="/invite" {% if nav == "invite" %}aria-current="page"{% endif %}>Invite</a>
+        <a href="/style" {% if nav == "style" %}aria-current="page"{% endif %}>Style</a>
+      </nav>
+      <form method="post" action="/logout">
+        <button class="button quiet" type="submit">Log out {{ user.name.split()[0] }}</button>
+      </form>
+    </div>
+    {% else %}
+    <nav class="site-nav" aria-label="Account">
+      <a href="/login" {% if nav == "login" %}aria-current="page"{% endif %}>Log in</a>
+      <a href="/register" {% if nav == "register" %}aria-current="page"{% endif %}>Create account</a>
     </nav>
+    {% endif %}
   </header>
   <main class="page">
     {% block content %}{% endblock %}

@@ -14,6 +14,7 @@ BusySource = Literal["weekly", "exam", "calendar", "exception"]
 InvitationStatus = Literal["draft", "pending", "accepted", "declined"]
 GenderChoice = Literal["male", "female", "other"]
 Gender = Literal["", "male", "female", "other"]
+SessionStyle = Literal["quiet focus", "talk it through", "drill practice questions"]
 
 
 class Course(BaseModel):

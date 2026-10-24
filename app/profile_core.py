@@ -10,7 +10,7 @@ from pathlib import Path
 
 import httpx
 
-fhttps://github.com/2635530141/Agent_Hackathon/pull/6/conflict?name=app%252Fstore.py&ancestor_oid=96c508323afcc54b40bc0fdb0ec0d17f94d6e43f&base_oid=6bc273d1da063c4944ae1a84a8ac7aba0b32e79c&head_oid=5a53e8c3d258dac15f572b2669cbeb6ed922c067rom app.contracts import PrivateProfile, PublicProfile
+from app.contracts import PrivateProfile, PublicProfile
 from app.store import CAMPUS_LAT, CAMPUS_LNG, add_course, courses, course_by_id, others, owner, replace_owner, student_by_id
 
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"

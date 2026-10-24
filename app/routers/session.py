@@ -504,6 +504,20 @@ def rooms_you_can_join(
     return [room for room in rows if room["joined"] or not room["full"]]
 
 
+def _my_rooms(request: Request) -> list[dict]:
+    """Rooms this person is already sitting in, newest time first."""
+    user_id = (request.session.get("user") or {}).get("id", "")
+    if not user_id:
+        return []
+    mine = [
+        _decorate_room(room, user_id)
+        for room in store.rooms()
+        if any(person["id"] == user_id for person in room["members"])
+    ]
+    mine.sort(key=lambda room: room["starts_at"])
+    return mine
+
+
 def _schedule_view(
     request: Request,
     open_room: str = "",
@@ -565,6 +579,7 @@ def _form_only(
         group_size=public_profile().group_size,
         new_place="",
         asked_when="",
+        my_rooms=_my_rooms(request),
         **_schedule_view(request, open_room),
     )
 
@@ -588,10 +603,13 @@ def session_page(
 ):
     if fresh == "1":
         request.session.pop("study_thread", None)
-        return _form_only(request, "")
+        return _form_only(request, "", notice=notice)
     if ready != "1":
         thread = list(request.session.get("study_thread") or [])
         question = thread[-1]["text"] if thread and thread[-1].get("role") == "assistant" else ""
+        if not question:
+            request.session.pop("study_thread", None)
+            thread = []
         return _form_only(request, sentence, notice=notice, thread=thread, question=question, open_room=open)
     context = _session_context(course_id, starts_at, ends_at, place_type, note, study_anyway == "1", sentence)
     thread = list(request.session.get("study_thread") or [])
@@ -618,8 +636,9 @@ def session_page(
         "session.html",
         nav="session",
         notice=notice,
-        thread=thread,
+        thread=[],
         question="",
+        my_rooms=_my_rooms(request),
         calendar_export=export_card(request),
         **context,
     )

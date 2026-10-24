@@ -8,6 +8,8 @@ During this work the user separately requested the screenshot's final Calendar v
 
 The Agent upgrade remains an independent feature branch and Draft PR against main. Calendar is now a merged dependency. PR #2 remains open and was not merged wholesale; its existing Agent changes overlap this branch. Review this complete upgrade before deciding whether to supersede the overlapping PR.
 
+After publication, Stephen updated main to `61c0223` with Profile changes. Those changes were preserved and normally merged into this feature branch. Latest clean main passed **176 tests, 2 warnings, 14.01 seconds**; the complete Agent + Profile + Calendar branch passed **236 tests, 2 warnings, 23.06 seconds**. `pip check`, `compileall` and diff checks passed. The current user-facing 8011 timetable was also rechecked through actual create -> edit -> refresh -> remove; only this audit's temporary record was removed, while the user's existing exam and extra-time records remained.
+
 **Live Omnara is not verified.** Only the approved project/process configuration locations were checked. `OMNARA_TOKEN`, `OMNARA_ORG`, `OMNARA_PROJECT`, `OMNARA_MODEL_PROVIDER` and `OMNARA_MODEL` were all absent; there was no project `.env`. No credential values were printed or sought elsewhere. HTTP tests use fake Omnara with actual local scheduling/scoring/place functions and synthetic business data. No real model, Google, email, booking, machines, billing changes or deployment occurred.
 
 ## Implemented flow

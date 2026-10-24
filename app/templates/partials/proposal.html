@@ -14,7 +14,7 @@
     <a href="{{ proposal.place.map_url }}">{{ proposal.place.name }}</a>
     · {{ proposal.place.address }}
   </p>
-  <p class="hint">{{ proposal.place.hours }} · rating {{ proposal.place.rating }} · Not reserved. Find a spot on arrival.</p>
+  <p class="hint">{{ proposal.place.hours }}{% if proposal.place.rating %} · rating {{ proposal.place.rating }}{% endif %} · Not reserved. Find a spot on arrival.</p>
   <p class="hint">{{ proposal.reason }}</p>
   {% if interactive %}
   <form method="post" action="/session/draft" class="stack">

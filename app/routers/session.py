@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from app import matching_core, schedule_core, store
 from app.format import clock, pretty_range
 from app.omnara_client import OmnaraError, interpret_request
+from app import places as live_places
 from app.profile_core import PLACE_LABELS, public_profile
 from app.web import render
 from app.scheduling.session_hooks import refresh_before_request, export_card
@@ -391,6 +392,11 @@ def _place_name(place_type: str, note: str) -> str:
     for place in store.places():
         if place["name"].lower() in folded:
             return place["name"]
+    # The nearest real place of that kind around the host (Google Maps or OpenStreetMap).
+    host = public_profile()
+    nearby = live_places.nearby(place_type, host.anchor_lat, host.anchor_lng, host.radius_meters)
+    if nearby:
+        return nearby[0]["name"]
     for place in store.places():
         if place["kind"] == place_type:
             return place["name"]

@@ -16,3 +16,13 @@ def isolated_calendar(tmp_path, monkeypatch):
     if get_runtime.cache_info().currsize:
         get_runtime().repository.close()
     get_runtime.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def offline_places(monkeypatch):
+    """No live Google Maps, OpenStreetMap, or Omnara place picker in tests."""
+    from app import places
+    monkeypatch.setenv("STUDYMATE_OFFLINE", "1")
+    places.clear_cache()
+    yield
+    places.clear_cache()

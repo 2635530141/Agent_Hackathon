@@ -4,7 +4,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import accounts, profile_core, store
+from app import accounts, places, profile_core, store
 from app.contracts import PrivateProfile
 from app.main import app
 
@@ -14,8 +14,6 @@ PRIVATE_KEYS = {"email", "street_address", "gender_self", "gender_preference", "
 @pytest.fixture(autouse=True)
 def restore_owner(monkeypatch):
     saved, catalog = store.owner(), store.courses()
-    # Never call Google from tests, even when .env has a key.
-    monkeypatch.setattr(profile_core, "_maps_key", lambda: "")
     yield
     store.replace_owner(saved)
     store.COURSES[:] = catalog
@@ -271,41 +269,76 @@ class FakeResponse:
         return self.data
 
 
+def _online(monkeypatch, key=""):
+    monkeypatch.delenv("STUDYMATE_OFFLINE", raising=False)
+    monkeypatch.setattr(places, "maps_key", lambda: key)
+
+
 def test_google_geocoding_is_used_when_a_key_is_set(monkeypatch):
     seen = {}
 
     def fake_get(url, params, timeout):
-        seen.update(params)
+        seen.update(url=url, **params)
         return FakeResponse({"status": "OK", "results": [{"geometry": {"location": {"lat": 37.86, "lng": -122.25}}}]})
 
-    monkeypatch.setattr(profile_core, "_maps_key", lambda: "test-key")
-    monkeypatch.setattr(profile_core.httpx, "get", fake_get)
-    profile = profile_core.update_profile({"anchor": "home", "street_address": "1 Any Street, Berkeley"})
+    _online(monkeypatch, "test-key")
+    monkeypatch.setattr(places.httpx, "get", fake_get)
+    profile = profile_core.update_profile({"street_address": "1 Any Street, Berkeley"})
     assert (profile.anchor_lat, profile.anchor_lng) == (37.86, -122.25)
-    assert seen["address"] == "1 Any Street, Berkeley" and seen["key"] == "test-key"
+    assert seen["url"] == places.GEOCODE_URL and seen["address"] == "1 Any Street, Berkeley" and seen["key"] == "test-key"
+
+
+def test_openstreetmap_geocoding_is_used_without_a_key(monkeypatch):
+    seen = {}
+
+    class Found(FakeResponse):
+        def raise_for_status(self):
+            pass
+
+    def fake_get(url, params, headers, timeout):
+        seen.update(url=url, agent=headers["User-Agent"], **params)
+        return Found([{"lat": "37.8679319", "lon": "-122.260093"}])
+
+    _online(monkeypatch)
+    monkeypatch.setattr(places, "NOMINATIM_GAP", 0)
+    monkeypatch.setattr(places.httpx, "get", fake_get)
+    profile = profile_core.update_profile({"street_address": "2421 Durant Avenue, Berkeley"})
+    assert (profile.anchor_lat, profile.anchor_lng) == (37.8679319, -122.260093)
+    assert seen["url"] == places.NOMINATIM_URL and seen["q"] == "2421 Durant Avenue, Berkeley"
+    assert "StudyMate" in seen["agent"]
+
+
+def test_unchanged_address_is_not_looked_up_again(monkeypatch):
+    def fail(*args, **kwargs):
+        raise AssertionError("no lookup expected")
+
+    _online(monkeypatch, "test-key")
+    monkeypatch.setattr(places.httpx, "get", fail)
+    profile_core.update_profile({"major": "Physics"})
+    assert profile_core.private_profile().major == "Physics"
 
 
 def test_google_zero_results_is_a_clear_error(monkeypatch):
-    monkeypatch.setattr(profile_core, "_maps_key", lambda: "test-key")
-    monkeypatch.setattr(profile_core.httpx, "get", lambda *a, **k: FakeResponse({"status": "ZERO_RESULTS", "results": []}))
+    _online(monkeypatch, "test-key")
+    monkeypatch.setattr(places.httpx, "get", lambda *a, **k: FakeResponse({"status": "ZERO_RESULTS", "results": []}))
     with pytest.raises(ValueError, match="could not find"):
-        profile_core.update_profile({"anchor": "home", "street_address": "nowhere at all"})
+        profile_core.update_profile({"street_address": "nowhere at all"})
 
 
 def test_google_outage_is_a_clear_error(monkeypatch):
     def down(*args, **kwargs):
         raise httpx.ConnectError("down")
 
-    monkeypatch.setattr(profile_core, "_maps_key", lambda: "test-key")
-    monkeypatch.setattr(profile_core.httpx, "get", down)
+    _online(monkeypatch, "test-key")
+    monkeypatch.setattr(places.httpx, "get", down)
     with pytest.raises(ValueError, match="could not be reached"):
-        profile_core.update_profile({"anchor": "home", "street_address": "2425 Durant Ave"})
+        profile_core.update_profile({"street_address": "2425 Durant Ave"})
 
 
 def test_profile_page_links_radius_center_to_google_maps(client):
     body = client.get("/profile").text
-    assert "https://www.google.com/maps/search/?api=1&amp;query=37.8668,-122.265" in body
-    assert "Google Maps is not connected yet" in body
+    assert "https://www.google.com/maps/search/?api=1&amp;query=37.8668%2C-122.265" in body
+    assert "located with OpenStreetMap" in body
 
 
 # Study style choices

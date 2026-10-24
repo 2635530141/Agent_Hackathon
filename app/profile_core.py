@@ -5,7 +5,7 @@ Street address, email, and gender stay in PrivateProfile.
 """
 
 from app.contracts import PrivateProfile, PublicProfile
-from app.store import courses, others, owner, replace_owner
+from app.store import courses, others, owner, replace_owner, student_by_id
 
 STUDY_STYLES = ("quiet", "talk", "drill")
 ANCHORS = ("home", "campus")
@@ -27,13 +27,49 @@ def private_profile() -> PrivateProfile:
     return PrivateProfile.model_validate(owner())
 
 
-def public_profile() -> PublicProfile:
-    return PublicProfile.model_validate(owner())
+def public_profile(student_id: str | None = None) -> PublicProfile:
+    """The owner's profile by default, or any student's by id."""
+    record = owner() if student_id is None else student_by_id(student_id)
+    if record is None:
+        raise KeyError(f"Unknown student {student_id}")
+    return PublicProfile.model_validate(record)
+
+
+def public_profiles(student_ids: list[str]) -> list[PublicProfile]:
+    """Skips unknown ids so a stale id cannot break a match."""
+    profiles = []
+    for student_id in student_ids:
+        record = student_by_id(student_id)
+        if record is not None:
+            profiles.append(PublicProfile.model_validate(record))
+    return profiles
+
+
+def email_for(student_id: str) -> str:
+    """Executor only, at Send. Never pass the result to matching or the model."""
+    record = student_by_id(student_id)
+    if record is None:
+        raise KeyError(f"Unknown student {student_id}")
+    return record["email"]
+
+
+def _accepts(preference: str, gender: str) -> bool:
+    return not preference or preference == gender
 
 
 def eligible_student_ids() -> list[str]:
-    """Gender filtering belongs here so the matcher never sees gender."""
-    return [person["id"] for person in others()]
+    """Gender filtering belongs here so the matcher never sees gender.
+
+    Both sides must accept each other. A student who sets a preference is
+    not matched with someone who left their own gender blank.
+    """
+    me = owner()
+    return [
+        person["id"]
+        for person in others()
+        if _accepts(me["gender_preference"], person["gender_self"])
+        and _accepts(person["gender_preference"], me["gender_self"])
+    ]
 
 
 def update_profile(data: dict) -> PrivateProfile:

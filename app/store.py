@@ -9,9 +9,14 @@ from copy import deepcopy
 
 OWNER_ID = "u_maya"
 
+CAMPUS_LAT = 37.8719
+CAMPUS_LNG = -122.2585
+
 COURSES = [
     {"id": "cs61a", "code": "CS 61A", "name": "Structure and Interpretation of Computer Programs"},
     {"id": "math54", "code": "Math 54", "name": "Linear Algebra and Differential Equations"},
+    {"id": "cs61b", "code": "CS 61B", "name": "Data Structures"},
+    {"id": "data8", "code": "Data 8", "name": "Foundations of Data Science"},
 ]
 
 _owner = {
@@ -33,9 +38,70 @@ _owner = {
     "gender_preference": "",
 }
 
+
+def _student(
+    sid: str,
+    name: str,
+    *,
+    major: str,
+    year: int,
+    courses: list[str],
+    style: str = "quiet",
+    places: list[str] | None = None,
+    group_size: int = 2,
+    anchor: str = "campus",
+    lat: float = CAMPUS_LAT,
+    lng: float = CAMPUS_LNG,
+    radius: int = 1500,
+    street: str = "",
+    gender_self: str = "",
+    gender_preference: str = "",
+) -> dict:
+    """Full PrivateProfile shape. `first_name` is kept for the proposal card."""
+    return {
+        "id": sid,
+        "name": name,
+        "first_name": name.split()[0],
+        "email": f"{sid.removeprefix('u_')}@example.edu",
+        "study_style": style,
+        "street_address": street,
+        "radius_meters": radius,
+        "anchor": anchor,
+        "anchor_lat": lat,
+        "anchor_lng": lng,
+        "group_size": group_size,
+        "place_types": places or ["coffee", "library"],
+        "major": major,
+        "year": year,
+        "course_ids": courses,
+        "gender_self": gender_self,
+        "gender_preference": gender_preference,
+    }
+
+
+# Eval fixture notes (README §7):
+#   T1  Jordan and Priya take CS 61A.
+#   T5  Jordan and Priya tie: same course, style, major, and year.
+#   A6  Jordan Lee and Jordan Li have near-identical names.
+#   E3  Omar lives 40 km away in Fremont but centers his radius on campus.
+#   E4  Only Lena and Marcus take Data 8.
+#   Gender filter: Aisha prefers women, so she is eligible for Maya only
+#   when Maya sets "I identify as" to woman.
 _others = [
-    {"id": "u_jordan", "first_name": "Jordan", "year": 3, "major": "EECS"},
-    {"id": "u_sam", "first_name": "Sam", "year": 2, "major": "Mathematics"},
+    _student("u_jordan", "Jordan Lee", major="EECS", year=3, courses=["cs61a", "math54"]),
+    _student("u_priya", "Priya Natarajan", major="EECS", year=3, courses=["cs61a", "cs61b"]),
+    _student("u_jordanli", "Jordan Li", major="Cognitive Science", year=2, courses=["cs61a"], style="talk", places=["coffee"]),
+    _student("u_sam", "Sam Rivera", major="Mathematics", year=2, courses=["math54"], style="drill", places=["library"], gender_self="nonbinary"),
+    _student("u_aisha", "Aisha Bello", major="EECS", year=3, courses=["cs61a", "math54"], gender_self="woman", gender_preference="woman"),
+    _student("u_ben", "Ben Okafor", major="Data Science", year=1, courses=["cs61a", "data8"], style="talk", group_size=3, places=["coffee", "outdoor"], gender_self="man"),
+    _student("u_lena", "Lena Fischer", major="Statistics", year=2, courses=["data8", "math54"], style="drill", group_size=4, places=["library", "outdoor"], gender_self="woman"),
+    _student("u_marcus", "Marcus Hall", major="Economics", year=1, courses=["data8"], style="talk", group_size=4, places=["coffee"], gender_self="man"),
+    _student("u_omar", "Omar Haddad", major="EECS", year=4, courses=["cs61b", "math54"], street="39100 Paseo Padre Pkwy, Fremont", radius=2000),
+    _student("u_chloe", "Chloe Martin", major="Physics", year=2, courses=["math54"], style="drill", places=["library"], anchor="home", lat=37.8650, lng=-122.2680, street="2425 Durant Ave", radius=1000, gender_self="woman"),
+    _student("u_diego", "Diego Alvarez", major="EECS", year=2, courses=["cs61a", "cs61b"], style="talk", group_size=3, places=["coffee", "library"], anchor="home", lat=37.8790, lng=-122.2690, street="1800 Euclid Ave", radius=2500, gender_self="man"),
+    _student("u_hana", "Hana Sato", major="Mathematics", year=3, courses=["math54", "cs61b"], places=["library", "outdoor"], gender_self="woman", gender_preference="woman"),
+    _student("u_tyler", "Tyler Brooks", major="Business", year=4, courses=["cs61a"], style="drill", places=["coffee"], anchor="home", lat=37.8044, lng=-122.2712, street="500 Grand Ave, Oakland", radius=3000, gender_self="man"),
+    _student("u_nina", "Nina Petrova", major="EECS", year=3, courses=["cs61a", "math54"], style="talk", group_size=3, places=["coffee", "library", "outdoor"], gender_self="woman"),
 ]
 
 _places = [
@@ -154,6 +220,15 @@ def replace_owner(profile: dict) -> None:
 
 def others() -> list[dict]:
     return deepcopy(_others)
+
+
+def student_by_id(student_id: str) -> dict | None:
+    if student_id == OWNER_ID:
+        return owner()
+    for person in _others:
+        if person["id"] == student_id:
+            return deepcopy(person)
+    return None
 
 
 def places() -> list[dict]:

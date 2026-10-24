@@ -1,4 +1,11 @@
 # Agent_Hackathon
+
+Schedule now includes Google connection setup and a separate private read-only
+user preview with Connect, Refresh and Disconnect. See
+[Google Calendar setup and verified boundaries](docs/calendar-google-user-connect.md)
+for install/start/test commands. OAuth credentials and personal schedules are
+not in Git; the regular demo remains synthetic.
+
 StudyMate Agent PRD
 v1, finalized for the hackathon build. October 24, 2026. Working name, see §12.
 1. Overview

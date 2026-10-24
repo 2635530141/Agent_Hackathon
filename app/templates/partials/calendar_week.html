@@ -20,8 +20,8 @@
       {% for row in free_rows %}<p>{{ row }}</p>{% else %}<p>No eligible free time.</p>{% endfor %}
       <p class="hint">{{ availability.calendar.verification_level }}</p>
     </div>
-    <form method="post" action="/schedule/calendar/refresh"><input type="hidden" name="day" value="{{ selected_day }}"><button class="button quiet" type="submit">Refresh synthetic snapshot</button></form>
-    <p class="hint">Only synthetic data is shown. A real Google connection is not configured.</p>
+    <form method="post" action="/schedule/calendar/refresh">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}<input type="hidden" name="day" value="{{ selected_day }}"><button class="button quiet" type="submit">{{ "Refresh Google Calendar" if private_calendar else "Refresh synthetic snapshot" }}</button></form>
+    <p class="hint">{% if private_calendar %}Primary Google calendar only · next 14 local dates. Refresh after changing an event in Google.{% else %}Only synthetic data is shown. A real Google connection is not configured.{% endif %}</p>
   </aside>
   <section class="calendar-board" aria-label="Study timetable">
     <div class="calendar-toolbar">
@@ -50,7 +50,7 @@
         {% endfor %}
       </div>
     </div>
-    <p id="calendar-selection-status" class="calendar-zone" role="status">{% if availability.calendar.verification_level == "unknown" %}Calendar verification is stale or incomplete. Refresh the synthetic snapshot before using free time.{% else %}Your saved hours and hard blocks are shown in your timezone. Effective free time is marked in green.{% endif %}</p>
+    <p id="calendar-selection-status" class="calendar-zone" role="status">{% if availability.calendar.verification_level == "unknown" %}Calendar verification is stale or incomplete. Refresh the {{ "Google calendar" if private_calendar else "synthetic snapshot" }} before using free time.{% else %}Your saved hours and hard blocks are shown in your timezone. Effective free time is marked in green.{% endif %}</p>
     <details class="calendar-zone"><summary>Effective free time · {{ selected_day }}</summary>
     {% for row in free_rows %}<p>{{ row }}</p>{% else %}<p>No eligible free time. Unknown calendar status never means free.</p>{% endfor %}
     </details>
@@ -65,7 +65,7 @@
     <input type="hidden" name="record_id" value="">
     <input type="hidden" name="entry_kind" value="free">
     <label class="field"><span class="label">Type</span><select name="kind"><option value="free">Extra study time</option><option value="weekly">Weekly study hours</option><option value="exam">Exam</option><option value="busy">Unavailable</option></select></label>
-    <label class="field" id="calendar-course-field"><span class="label">Course</span><select name="course_id">{% for course in courses %}<option value="{{ course.id }}">{{ course.code }}</option>{% endfor %}</select></label>
+    <label class="field" id="calendar-course-field"><span class="label">Course</span>{% if private_calendar %}<input name="course_id" placeholder="Course or exam label" maxlength="80">{% else %}<select name="course_id">{% for course in courses %}<option value="{{ course.id }}">{{ course.code }}</option>{% endfor %}</select>{% endif %}</label>
     <label class="field"><span class="label">Starts ({{ timezone }})</span><input type="datetime-local" name="starts_at" required></label>
     <label class="field"><span class="label">Ends ({{ timezone }})</span><input type="datetime-local" name="ends_at" required></label>
     <label class="field" id="calendar-priority-field"><span class="label">Priority starts (optional)</span><input type="datetime-local" name="priority_starts_at"></label>

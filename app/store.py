@@ -36,6 +36,7 @@ _owner = {
     "course_ids": ["cs61a", "math54"],
     "gender_self": "",
     "gender_preference": "",
+    "under_18": False,
 }
 
 
@@ -56,6 +57,7 @@ def _student(
     street: str = "",
     gender_self: str = "",
     gender_preference: str = "",
+    under_18: bool = False,
 ) -> dict:
     """Full PrivateProfile shape. `first_name` is kept for the proposal card."""
     return {
@@ -76,6 +78,7 @@ def _student(
         "course_ids": courses,
         "gender_self": gender_self,
         "gender_preference": gender_preference,
+        "under_18": under_18,
     }
 
 
@@ -87,6 +90,7 @@ def _student(
 #   E4  Only Lena and Marcus take Data 8.
 #   Gender filter: Aisha prefers women, so she is eligible for Maya only
 #   when Maya sets "I identify as" to woman.
+#   Kai is under 18 and is never eligible.
 _others = [
     _student("u_jordan", "Jordan Lee", major="EECS", year=3, courses=["cs61a", "math54"]),
     _student("u_priya", "Priya Natarajan", major="EECS", year=3, courses=["cs61a", "cs61b"]),
@@ -97,11 +101,12 @@ _others = [
     _student("u_lena", "Lena Fischer", major="Statistics", year=2, courses=["data8", "math54"], style="drill", group_size=4, places=["library", "outdoor"], gender_self="woman"),
     _student("u_marcus", "Marcus Hall", major="Economics", year=1, courses=["data8"], style="talk", group_size=4, places=["coffee"], gender_self="man"),
     _student("u_omar", "Omar Haddad", major="EECS", year=4, courses=["cs61b", "math54"], street="39100 Paseo Padre Pkwy, Fremont", radius=2000),
-    _student("u_chloe", "Chloe Martin", major="Physics", year=2, courses=["math54"], style="drill", places=["library"], anchor="home", lat=37.8650, lng=-122.2680, street="2425 Durant Ave", radius=1000, gender_self="woman"),
-    _student("u_diego", "Diego Alvarez", major="EECS", year=2, courses=["cs61a", "cs61b"], style="talk", group_size=3, places=["coffee", "library"], anchor="home", lat=37.8790, lng=-122.2690, street="1800 Euclid Ave", radius=2500, gender_self="man"),
+    _student("u_chloe", "Chloe Martin", major="Physics", year=2, courses=["math54"], style="drill", places=["library"], anchor="home", lat=37.8678, lng=-122.2600, street="2425 Durant Ave", radius=1000, gender_self="woman"),
+    _student("u_diego", "Diego Alvarez", major="EECS", year=2, courses=["cs61a", "cs61b"], style="talk", group_size=3, places=["coffee", "library"], anchor="home", lat=37.8760, lng=-122.2604, street="1800 Euclid Ave", radius=2500, gender_self="man"),
     _student("u_hana", "Hana Sato", major="Mathematics", year=3, courses=["math54", "cs61b"], places=["library", "outdoor"], gender_self="woman", gender_preference="woman"),
-    _student("u_tyler", "Tyler Brooks", major="Business", year=4, courses=["cs61a"], style="drill", places=["coffee"], anchor="home", lat=37.8044, lng=-122.2712, street="500 Grand Ave, Oakland", radius=3000, gender_self="man"),
+    _student("u_tyler", "Tyler Brooks", major="Business", year=4, courses=["cs61a"], style="drill", places=["coffee"], anchor="home", lat=37.8105, lng=-122.2593, street="500 Grand Ave, Oakland", radius=3000, gender_self="man"),
     _student("u_nina", "Nina Petrova", major="EECS", year=3, courses=["cs61a", "math54"], style="talk", group_size=3, places=["coffee", "library", "outdoor"], gender_self="woman"),
+    _student("u_kai", "Kai Wong", major="Undeclared", year=1, courses=["cs61a", "math54"], under_18=True),
 ]
 
 _places = [

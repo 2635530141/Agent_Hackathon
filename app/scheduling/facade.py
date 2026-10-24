@@ -1,7 +1,7 @@
 """Persistent implementation behind app.schedule_core's compatible public API."""
 from datetime import timedelta
 from uuid import uuid4
-from sqlalchemy import delete, insert
+from sqlalchemy import delete, insert, select
 from app import store
 from app.contracts import BusyInterval, Exam, MatchBusyInterval
 from .core.schemas import Actor, ExamInput, ExceptionInput, Horizon, TrustedMatchContext, WeeklyRuleInput
@@ -60,22 +60,49 @@ def weekly_hours(student_id: str | None = None) -> dict[str, tuple[str, str]]:
 
 
 def save_weekly(hours: dict[str, tuple[str, str]], student_id: str | None = None,
-                timezone_name: str | None = None, overnight: dict | None = None) -> None:
+                timezone_name: str | None = None, overnight: dict | None = None,
+                weekdays: set[int] | None = None) -> None:
+    """Save selected days; untouched rules retain their identity, zone and bounds."""
     student_id = student_id or owner_id()
-    validated = []
+    selected = set(range(7)) if weekdays is None else set(weekdays)
+    if any(type(day) is not int or day not in range(7) for day in selected):
+        raise ValueError("Choose a valid weekday.")
+    validated = {}
     for number, day in enumerate(DAYS):
+        if number not in selected:
+            continue
         start, end = hours.get(day, ("", ""))
         if bool(start) != bool(end):
             raise ValueError(f"{DAY_LABELS[day]} needs both a start and an end.")
         if start:
-            validated.append(WeeklyRuleInput(weekday=number, start_local=start, end_local=end,
-                timezone=timezone_name or display_zone(), ends_next_day=bool((overnight or {}).get(day))))
+            validated[number] = WeeklyRuleInput(weekday=number, start_local=start, end_local=end,
+                timezone=timezone_name or display_zone(), ends_next_day=bool((overnight or {}).get(day)))
     repository = get_runtime().repository
     with repository.engine.begin() as connection:
-        connection.execute(delete(records).where(records.c.owner_id == student_id, records.c.kind == "weekly-rules"))
-        for rule in validated:
-            connection.execute(insert(records).values(id=uuid4().hex, owner_id=student_id,
-                kind="weekly-rules", payload=rule.model_dump(mode="json")))
+        rows = connection.execute(select(records).where(records.c.owner_id == student_id,
+            records.c.kind == "weekly-rules").order_by(records.c.id)).mappings().all()
+        existing = {}
+        for row in rows:
+            rule = repository._record(row)
+            existing.setdefault(rule.weekday, []).append(rule)
+        for day in sorted(selected):
+            prior, rule = existing.get(day, []), validated.get(day)
+            # A bulk form resubmits unchanged days in their original wall times.
+            # Merely changing the display zone must not reinterpret those rules.
+            if weekdays is None and rule and len(prior) == 1 and (
+                prior[0].start_local, prior[0].end_local, prior[0].ends_next_day
+            ) == (rule.start_local, rule.end_local, rule.ends_next_day):
+                continue
+            if prior:
+                connection.execute(delete(records).where(records.c.owner_id == student_id,
+                    records.c.kind == "weekly-rules", records.c.id.in_([r.id for r in prior])))
+            if rule:
+                payload = rule.model_dump(mode="json")
+                if len(prior) == 1:
+                    payload.update(valid_from=prior[0].model_dump(mode="json")["valid_from"],
+                                   valid_until=prior[0].model_dump(mode="json")["valid_until"])
+                connection.execute(insert(records).values(id=prior[0].id if prior else uuid4().hex,
+                    owner_id=student_id, kind="weekly-rules", payload=payload))
         repository._bump(connection, student_id)
 
 
@@ -142,7 +169,32 @@ def matching_free_time(student_id, start, end):
     return [(i.start, i.end) for i in snapshot.available]
 
 
-def own_conflict(starts_at: str, ends_at: str, study_anyway: bool) -> dict | None:
+def _free_inside(requested, blocks):
+    """The longest free part of the requested window, at least an hour (or all of a shorter
+    window). Never another day or time outside what was asked for."""
+    pieces = [(requested.start, requested.end)]
+    for block in sorted(blocks, key=lambda item: item.start):
+        kept = []
+        for start, end in pieces:
+            if block.end <= start or block.start >= end:
+                kept.append((start, end))
+                continue
+            if start < block.start:
+                kept.append((start, block.start))
+            if block.end < end:
+                kept.append((block.end, end))
+        pieces = kept
+    needed = min(timedelta(hours=1), requested.end - requested.start)
+    pieces = [piece for piece in pieces if piece[1] - piece[0] >= needed]
+    if not pieces:
+        return None
+    start, end = max(pieces, key=lambda piece: piece[1] - piece[0])
+    return slot(start, end)
+
+
+def own_conflict(starts_at: str, ends_at: str, study_anyway: bool, within_window: bool = True) -> dict | None:
+    """The organizer's own conflict. For a study session (within_window) the requested
+    window is a hard boundary; the schedule page's check tool keeps the next free slot."""
     requested = slot(starts_at, ends_at)  # Validate before considering any override.
     search_end = requested.start + timedelta(days=14)
     if live_context():
@@ -153,12 +205,17 @@ def own_conflict(starts_at: str, ends_at: str, study_anyway: bool) -> dict | Non
     result = get_runtime().service.check_slot(Actor(subject_id=owner_id()), requested, search)
     if not result.blocked:
         return None
-    titles = [c.owner_only_private_title for c in result.conflicts if c.owner_only_private_title]
+    # Asking for a session time counts as choosing to study then, so usual study hours
+    # do not block it; exams, events, and busy blocks do.
+    hard = [c for c in result.conflicts if not within_window or c.code != "OUTSIDE_STUDY_HOURS"]
+    if not hard:
+        return None
+    titles = [c.owner_only_private_title for c in hard if c.owner_only_private_title]
     names = {"EXAM_BUSY":"Exam", "MANUAL_BUSY":"Unavailable", "OUTSIDE_STUDY_HOURS":"Outside study hours",
              "CONFIRMED_SESSION_BUSY":"Confirmed study session", "CALENDAR_UNKNOWN":"Calendar unknown", "CALENDAR_BUSY":"Calendar busy"}
-    alternative = result.alternative_slot
-    return {"title": "; ".join(titles) or ", ".join(dict.fromkeys(names[c.code] for c in result.conflicts)),
-        "codes": [c.code for c in result.conflicts], "override_eligible": False,
+    alternative = _free_inside(requested, [c.interval for c in hard]) if within_window else result.alternative_slot
+    return {"title": "; ".join(titles) or ", ".join(dict.fromkeys(names[c.code] for c in hard)),
+        "codes": [c.code for c in hard], "override_eligible": False,
         "alternative_start": local_input(alternative.start) if alternative else None,
         "alternative_end": local_input(alternative.end) if alternative else None,
         "no_alternative": alternative is None,

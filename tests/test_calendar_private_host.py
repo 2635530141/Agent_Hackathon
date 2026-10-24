@@ -164,3 +164,46 @@ def test_private_host_rejects_wrong_host_and_forged_demo_cookie(private_host):
     with client(host) as browser:
         assert browser.post("/register",data={"name":"Test User","email":"fake@example.test","password":"test-password-only"}).status_code == 403
         assert browser.get("/schedule").status_code == 303
+
+
+@pytest.mark.parametrize("operation", ["add", "edit", "delete", "bulk"])
+def test_weekly_edits_after_timezone_switch_preserve_other_days(private_host, operation):
+    host, settings = private_host
+    with client(host) as browser:
+        token = signup(browser)
+        headers = {"x-csrf-token": token}
+        for day, start, end in [("2026-10-26", "13:00", "18:00"), ("2026-10-27", "09:00", "12:00")]:
+            assert browser.post("/api/schedule/entry", headers=headers, json={
+                "kind":"weekly", "starts_at":f"{day}T{start}", "ends_at":f"{day}T{end}",
+            }).status_code == 200
+        account = host.accounts.authenticate("one@example.test", "synthetic-password-only")
+        monday = next(r for r in host.repository.list_records(account["id"], "weekly-rules") if r.weekday == 0)
+        before = monday.model_dump()
+        assert before["timezone"] == "America/Los_Angeles"
+        assert browser.post("/schedule/timezone", data={"timezone":"America/New_York", "csrf_token":token}).status_code == 303
+        if operation == "delete":
+            response = browser.delete("/api/schedule/entry/weekly/1", headers=headers)
+        elif operation == "bulk":
+            response = browser.post("/schedule/hours", data={"csrf_token":token,
+                "mon_start":"13:00", "mon_end":"18:00", "tue_start":"10:00", "tue_end":"12:00"})
+        else:
+            response = browser.post("/api/schedule/entry", headers=headers, json={
+                "kind":"weekly", "id":"1" if operation == "edit" else None,
+                "starts_at":"2026-10-27T10:00", "ends_at":"2026-10-27T12:00",
+            })
+        assert response.status_code in {200, 303}
+        rules = host.repository.list_records(account["id"], "weekly-rules")
+        assert next(r for r in rules if r.weekday == 0).model_dump() == before
+        if operation == "delete":
+            assert all(r.weekday != 1 for r in rules)
+        else:
+            assert next(r for r in rules if r.weekday == 1).timezone == "America/New_York"
+        week = browser.get("/api/schedule/week?day=2026-10-26").json()
+        # Same real interval: 13:00 LA remains 16:00 New York after editing Tuesday.
+        assert any(e["kind"] == "weekly" and e["day"] == 0 and e["starts_at"] == "2026-10-26T16:00"
+                   and e["ends_at"] == "2026-10-26T21:00" for e in week["entries"])
+    rebuilt = build_private_host(**settings)
+    try:
+        assert next(r for r in rebuilt.repository.list_records(account["id"], "weekly-rules") if r.weekday == 0).model_dump() == before
+    finally:
+        rebuilt.repository.close()

@@ -212,6 +212,7 @@ tempCodeRunnerFile.py
 .env.*
 !.env.calendar.example
 /secrets/
+launch-client.json
 client_secret*.json
 credentials*.json
 token*.json

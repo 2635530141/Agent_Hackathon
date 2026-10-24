@@ -26,3 +26,16 @@ def offline_places(monkeypatch):
     places.clear_cache()
     yield
     places.clear_cache()
+
+
+@pytest.fixture(autouse=True)
+def no_live_room_ranking(monkeypatch):
+    """Rendering /session ranks rooms with the model; no test may reach Omnara."""
+    from app import advise, room_matching
+
+    class Unavailable:
+        def complete(self, *args):
+            raise advise.AdviseUnavailable("no model in tests")
+
+    monkeypatch.setattr(room_matching, "client", lambda: Unavailable())
+    monkeypatch.setattr(store, "_room_rankings", {})

@@ -62,7 +62,7 @@ def test_exam_form_edit_updates_page_and_matching():
         assert len(body["available"]) == 2 and len(body["priority_windows"]) == 1
         me = matching_core.load_inputs().me
         assert matching_core.free_time(me,parse_instant("2026-10-26T15:00"),parse_instant("2026-10-26T17:30")) == []
-        assert "5:30 PM" in client.get("/schedule?day=2026-10-26").text
+        assert "2026-10-26T17:30" in client.get("/schedule?day=2026-10-26").text
 
 
 def test_restart_retains_edits_and_utc_instants():
@@ -96,9 +96,13 @@ def test_half_open_adjacent_and_full_duration_alternative_checks_all_blocks():
     assert schedule_core.own_conflict("2026-10-26T15:00","2026-10-26T16:00",False) is None
     schedule_core.save_weekly({"mon":("13:00","20:00")})
     schedule_core.create_exception("2026-10-26T17:00","2026-10-26T17:30","busy")
-    conflict = schedule_core.own_conflict("2026-10-26T14:00","2026-10-26T15:30",False)
+    # The schedule page's check tool still offers the next full-length free slot.
+    conflict = schedule_core.own_conflict("2026-10-26T14:00","2026-10-26T15:30",False,within_window=False)
     assert (conflict["alternative_start"],conflict["alternative_end"]) == ("2026-10-26T17:30","2026-10-26T19:00")
     assert parse_instant(conflict["alternative_end"])-parse_instant(conflict["alternative_start"]) == timedelta(minutes=90)
+    # A study session never moves outside the requested window; nothing in it is free for an hour.
+    session = schedule_core.own_conflict("2026-10-26T14:00","2026-10-26T15:30",False)
+    assert session and (session["alternative_start"], session["alternative_end"]) == (None, None)
 
 
 def test_no_alternative_renders_without_crashing():
@@ -108,7 +112,7 @@ def test_no_alternative_renders_without_crashing():
         response = client.get("/session",params={"ready":"1","starts_at":"2026-10-26T16:00","ends_at":"2026-10-26T17:00","study_anyway":"1"})
         assert response.status_code == 200
         assert "No feasible alternative" in response.text
-        assert 'href="/session?' not in response.text.split("You're busy then.")[1].split("</aside>")[0]
+        assert "Try " not in response.text.split("overlaps this time.")[1].split("</p>")[0]
 
 
 def test_free_exception_not_busy_priority_never_grants_hours():
@@ -233,7 +237,7 @@ def test_latest_session_interpretation_hands_time_to_calendar_with_mock_only(mon
     with demo_client() as client:
         response = client.post("/session/interpret",data={"sentence":"Synthetic request"})
         assert response.status_code == 200
-        assert "You're busy then." in response.text
+        assert "Exam overlaps this time." in response.text
         assert "EXAM_BUSY" in schedule_core.own_conflict("2026-10-26T16:00","2026-10-26T17:00",True)["codes"]
-        assert 'value="Synthetic request"' not in response.text  # Sentence stays in the textarea.
-        assert "Synthetic request</textarea>" in response.text
+        assert 'name="sentence" value="Synthetic request"' in response.text  # New room forms retain the conversation.
+        assert "<p>Synthetic request</p>" in response.text

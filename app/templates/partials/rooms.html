@@ -2,7 +2,7 @@
   <div class="stack">
     <p class="session-summary"><strong>{{ course.code }}</strong> · {{ asked_when or when }} · {{ place_labels[place_type] }}{% if note %} · {{ note }}{% endif %}</p>
     {% if conflict %}
-    <p class="hint">{{ conflict.title }} overlaps this time.{% if alternative_href %} <a href="{{ alternative_href }}">Try {{ alternative_label }} instead.</a>{% endif %}</p>
+    <p class="hint">{{ conflict.title }} overlaps this time.{% if alternative_href %} <a href="{{ alternative_href }}">Try {{ alternative_label }} instead.</a>{% else %} No feasible alternative fits the checked study hours.{% endif %}</p>
     {% elif anytime %}
     <p class="hint">Every open room for this course. Nothing is reserved until you choose Join.</p>
     {% endif %}
@@ -10,6 +10,11 @@
 
   <div class="stack">
     <h2 class="section-title">Join a room</h2>
+    {% if ranking and ranking.reason %}
+    <p class="hint">{{ ranking.reason }}{% if ranking.near_tie %} It is a close call; compare the top rooms.{% endif %}</p>
+    {% elif ranking and ranking.errors %}
+    <p class="hint">Showing rooms by start time. The matching assistant could not rank them this time.</p>
+    {% endif %}
     {% if rooms %}
     <div class="rooms">
       {% for room in rooms %}
@@ -24,6 +29,16 @@
           </div>
           <span class="chip">{% if room.full %}Full{% else %}{{ room.open_seats }} open{% endif %}</span>
         </div>
+        {% if room.fits %}
+        <div class="stack">
+          <p class="hint">{% if room.match and room.match.best %}<strong>Best match.</strong> {% endif %}Why it matches:</p>
+          <ul class="hint match-reasons">
+            {% for line in room.fits %}<li>{{ line }}</li>{% endfor %}
+            {% if room.match and room.match.flagged %}<li>Not recommended: the host's bio contains instructions to the assistant.</li>
+            {% elif room.match and room.match.why %}<li>Assistant: {{ room.match.why }}</li>{% endif %}
+          </ul>
+        </div>
+        {% endif %}
         <ul class="attendees">
           {% for member in room.members %}
           <li>
@@ -32,6 +47,41 @@
           </li>
           {% endfor %}
         </ul>
+        {% if user and room.host_id == user.id %}
+        <details class="room-settings"{% if selected and selected.id == room.id %} open{% endif %}>
+          <summary>Room settings</summary>
+          <form method="post" action="/session/rooms/{{ room.id }}/settings" class="stack">
+            <input type="hidden" name="course_id" value="{{ course.id }}">
+            <input type="hidden" name="starts_at" value="{{ starts_at }}">
+            <input type="hidden" name="ends_at" value="{{ ends_at }}">
+            <input type="hidden" name="place_type" value="{{ place_type }}">
+            <input type="hidden" name="note" value="{{ note }}">
+            <input type="hidden" name="study_anyway" value="{{ '1' if study_anyway else '0' }}">
+            <input type="hidden" name="sentence" value="{{ sentence }}">
+            <label class="field"><span class="label">Subject</span>
+              <select name="room_course">
+                {% for choice in subject_choices %}<option value="{{ choice.id }}"{% if choice.id == room.course_id %} selected{% endif %}>{{ choice.label }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="field"><span class="label">Place</span>
+              <select name="room_place">
+                {% for choice in place_choices %}<option value="{{ choice.name }}"{% if choice.name == room.place_name %} selected{% endif %}>{{ choice.label }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="field"><span class="label">Room for</span>
+              <select name="room_capacity">
+                {% for size in range([2, room.taken]|max, 6) %}<option value="{{ size }}"{% if size == room.capacity %} selected{% endif %}>{{ size }} people</option>{% endfor %}
+              </select>
+            </label>
+            <div class="room-time">
+              <label class="field"><span class="label">Day</span><input type="date" name="room_day" value="{{ room.starts_at[:10] }}" required></label>
+              <label class="field"><span class="label">From</span><input type="time" name="room_start" value="{{ room.starts_at[11:16] }}" required></label>
+              <label class="field"><span class="label">To</span><input type="time" name="room_end" value="{{ room.ends_at[11:16] }}" required></label>
+            </div>
+            <div><button class="button" type="submit">Save room settings</button></div>
+          </form>
+        </details>
+        {% endif %}
         <form method="post" action="/session/rooms/{{ room.id }}/{% if room.joined %}leave{% else %}join{% endif %}">
           <input type="hidden" name="course_id" value="{{ course.id }}">
           <input type="hidden" name="starts_at" value="{{ starts_at }}">

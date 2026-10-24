@@ -5,13 +5,13 @@ from urllib.parse import quote, urlencode
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
-from app import matching_core, schedule_core, store
+from app import matching_core, room_matching, schedule_core, store
 from app.format import clock, pretty_range
 from app.omnara_client import OmnaraError, interpret_request
 from app import places as live_places
 from app.profile_core import PLACE_LABELS, public_profile
 from app.web import render
-from app.scheduling.session_hooks import refresh_before_request, export_card
+from app.scheduling.session_hooks import refresh_before_request, export_card, check_room_time
 
 router = APIRouter()
 _VAGUE_TIME = re.compile(r"\bany\s*time\b|\bwhenever\b|\bany day\b|from \w+day to \w+day", re.IGNORECASE)
@@ -20,14 +20,33 @@ _BROAD_SUBJECT = re.compile(
     re.IGNORECASE,
 )
 _SPECIFIC_COURSE = re.compile(
-    r"\b(?:computer science|cs|math(?:ematics)?|eecs?|stat|ee|physics)\s*\d",
+    r"\b(?:computer science|cs|math(?:ematics)?|eecs?|stats?|ee|physics|data|chem|bio|econ)\s*\d",
     re.IGNORECASE,
 )
+# A subject is a range of courses: words that name it, and course-code prefixes inside it.
 _SUBJECTS = (
-    ("cs", re.compile(r"\b(?:cs|computer science)\b", re.IGNORECASE)),
-    ("math", re.compile(r"\b(?:math|mathematics)\b", re.IGNORECASE)),
+    ("cs", re.compile(r"\b(?:cs|eecs|computer science|programming|coding)\b", re.IGNORECASE), ("cs", "eecs", "compsci")),
+    ("math", re.compile(r"\b(?:math|mathematics|calculus|linear algebra)\b", re.IGNORECASE), ("math",)),
+    ("data", re.compile(r"\b(?:data science|data|stats?|statistics)\b", re.IGNORECASE), ("data", "stat")),
+    ("physics", re.compile(r"\bphysics\b", re.IGNORECASE), ("physics", "phys")),
+    ("chem", re.compile(r"\bchem(?:istry)?\b", re.IGNORECASE), ("chem",)),
+    ("bio", re.compile(r"\bbio(?:logy)?\b", re.IGNORECASE), ("bio", "mcb")),
+    ("econ", re.compile(r"\becon(?:omics)?\b", re.IGNORECASE), ("econ",)),
+    ("writing", re.compile(r"\b(?:writing|english|essays?)\b", re.IGNORECASE), ("english", "writing")),
 )
-_SUBJECT_LABELS = {"cs": "Any CS course", "math": "Any Math course"}
+# No course or subject named means general study: any subject, any room.
+_ANY_SUBJECT = "subject:any"
+_SUBJECT_LABELS = {
+    "cs": "Any CS course",
+    "math": "Any Math course",
+    "data": "Any Data/Statistics course",
+    "physics": "Any Physics course",
+    "chem": "Any Chemistry course",
+    "bio": "Any Biology course",
+    "econ": "Any Economics course",
+    "writing": "Any writing course",
+    "any": "Any subject",
+}
 _DAYS = {
     "sunday": 25,
     "monday": 26,
@@ -98,7 +117,7 @@ def _subject_request(text: str) -> str | None:
     """A department is enough. 'CS 61A' stays one course; 'anything CS' does not."""
     if _SPECIFIC_COURSE.search(text) and not _BROAD_SUBJECT.search(text):
         return None
-    for key, pattern in _SUBJECTS:
+    for key, pattern, _ in _SUBJECTS:
         if pattern.search(text):
             return f"subject:{key}"
     return None
@@ -147,6 +166,28 @@ def _is_open_time(turns: list[dict]) -> bool:
     return bool(_ANYTIME.search(" ".join(user_turns)))
 
 
+_STYLE_WORDS = (
+    ("quiet", re.compile(r"\b(?:quiet|silent|silence|focus(?:ed)?)\b", re.IGNORECASE)),
+    ("talk", re.compile(r"\b(?:talk|talking|discuss|discussion|chat|out loud)\b", re.IGNORECASE)),
+    ("drill", re.compile(r"\b(?:drill|drilling|practice|problem sets?|practice problems)\b", re.IGNORECASE)),
+)
+_PLACE_WORDS = (("library", r"librar|lib\b|\bdoe\b"), ("coffee", r"coffee|cafe|café"), ("outdoor", r"outdoor|outside|glade"))
+_NEGATED = r"\b(?:not|no|avoid|never|without)\b(?:\W+\w+){0,3}?\W+(?:%s)"
+
+
+def _asked_factors(text: str) -> room_matching.Asked:
+    """Only what the student said; anything else is left to the soft ranking."""
+    avoid = {kind for kind, pattern in _PLACE_WORDS if re.search(_NEGATED % pattern, text, re.IGNORECASE)}
+    place = _mentioned_place(text) or None
+    return room_matching.Asked(
+        place=place if place not in avoid else None,
+        avoid=avoid,
+        size=_spoken_group_size(text),
+        at_least=bool(re.search(r"\bat least\s+\d", text, re.IGNORECASE)),
+        style=next((key for key, pattern in _STYLE_WORDS if pattern.search(text)), None),
+    )
+
+
 def _spoken_group_size(text: str) -> int | None:
     """'at least 4 people' is a room of 4. The profile size is the fallback."""
     found = [int(match.group(1) or match.group(2)) for match in _GROUP_SIZE.finditer(text)]
@@ -160,24 +201,33 @@ def _is_anytime_span(starts_at: str, ends_at: str) -> bool:
     return bool(start and end and end - start > timedelta(hours=24))
 
 
+_SPAN_BETWEEN = re.compile(
+    r"\bbetween\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+and\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", re.IGNORECASE
+)
+_SPAN = re.compile(
+    r"\b(?:from\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|until|till|-|–)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b",
+    re.IGNORECASE,
+)
+
+
 def _local_window(text: str) -> tuple[str, str] | None:
     day = next((number for name, number in _DAYS.items() if re.search(rf"\b{name}\b", text, re.IGNORECASE)), None)
     if day is None:
         return None
-    span = re.search(
-        r"\b(?:between|from)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+(?:and|to)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
-        text,
-        re.IGNORECASE,
-    )
+    span = _SPAN_BETWEEN.search(text) or _SPAN.search(text)
     point = re.search(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", text, re.IGNORECASE)
     clock = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", text, re.IGNORECASE)
     start = end = None
     if span:
         start = _study_hour(int(span.group(1)), int(span.group(2) or 0), span.group(3) or span.group(6))
         end = _study_hour(int(span.group(4)), int(span.group(5) or 0), span.group(6) or span.group(3))
-    elif point:
+        if start and end and end <= start and not span.group(6) and end[0] + 12 <= 23:
+            end = (end[0] + 12, end[1])  # "7-9" with no am/pm is 7 to 9 in the evening.
+        if not (start and end and end > start):
+            start = end = None
+    if start is None and point:
         start = _study_hour(int(point.group(1)), int(point.group(2) or 0), point.group(3))
-    elif clock:
+    elif start is None and clock:
         start = _study_hour(int(clock.group(1)), int(clock.group(2) or 0), clock.group(3))
     if start and end and (end[0], end[1]) > start:
         begin, finish = start, end
@@ -219,9 +269,9 @@ def _course_from_text(text: str, courses: list[dict]) -> str | None:
 
 
 def _mentioned_place(text: str) -> str:
-    if re.search(r"\b(?:not|no|avoid|never|without)\b(?:\W+\w+){0,3}?\W+librar", text, re.IGNORECASE):
+    if re.search(r"\b(?:not|no|avoid|never|without)\b(?:\W+\w+){0,3}?\W+(?:librar|lib\b)", text, re.IGNORECASE):
         return ""
-    if re.search(r"\bdoe\b|librar", text, re.IGNORECASE):
+    if re.search(r"\bdoe\b|librar|\blib\b", text, re.IGNORECASE):
         return "library"
     if re.search(r"coffeeshop|coffee\s*shop|\b(?:coffee|cafe|café)\b", text, re.IGNORECASE):
         return "coffee"
@@ -284,6 +334,12 @@ def _clarify(raw: dict, courses: list[dict], turns: list[dict]) -> tuple[dict | 
     if place:
         raw["place_type"] = place
     named = str(raw.get("course_id") or raw.get("course") or "").strip()
+    if not named:
+        # No course or subject is fine: the student is open to studying anything.
+        raw["course_id"] = named = _ANY_SUBJECT
+        if "course" in question.lower():
+            question = ""
+            raw.pop("question", None)
     user_turns = [turn["text"] for turn in turns if turn.get("role") == "user"]
     latest = user_turns[-1] if user_turns else ""
     starts_at = _clock(str(raw.get("starts_at") or ""))
@@ -297,8 +353,6 @@ def _clarify(raw: dict, courses: list[dict], turns: list[dict]) -> tuple[dict | 
     )
     vague = bool(_VAGUE_TIME.search(latest)) and _local_window(latest) is None and not open_time
     missing_time = starts_at is None or ends_at is None or ends_at <= starts_at or wide or vague
-    if not named:
-        return None, question or "You didn't specify a course. Which course do you want to study?"
     if missing_time:
         return None, question or "You didn't specify a time. What time do you want to meet?"
     try:
@@ -378,15 +432,35 @@ def _session_context(
 
 
 def _family(course_id: str) -> str:
+    """The subject a course belongs to: "CS 61B" is cs, "Data 8" is data, "subject:any" is any."""
     if course_id.startswith("subject:"):
         return course_id.split(":", 1)[1]
     found = store.course_by_id(course_id)
     label = (found["code"] if found else course_id).lower().replace(" ", "")
-    if label.startswith("cs") or course_id.lower().startswith("cs"):
-        return "cs"
-    if label.startswith("math") or course_id.lower().startswith("math"):
-        return "math"
+    for key, _, prefixes in _SUBJECTS:
+        if label.startswith(prefixes) or course_id.lower().startswith(prefixes):
+            return key
+    spoken = _subject_request(course_id)
+    if spoken:
+        return spoken.split(":", 1)[1]
     return label or course_id.lower()
+
+
+def _course_key(course_id: str) -> str:
+    found = store.course_by_id(course_id)
+    return (found["code"] if found else course_id).lower().replace(" ", "")
+
+
+def _subject_fits(asked_id: str, room_id: str) -> bool:
+    """General study fits every room and a general room welcomes everyone. A subject
+    (a range) fits any room in it. A named course fits that course, or a room open to
+    its whole subject."""
+    asked, room = _family(asked_id), _family(room_id)
+    if "any" in (asked, room):
+        return True
+    if asked_id.startswith("subject:") or room_id.startswith("subject:"):
+        return asked == room
+    return _course_key(asked_id) == _course_key(room_id)
 
 
 def _place_name(place_type: str, note: str) -> str:
@@ -475,20 +549,26 @@ def opened_room(room_id: str, user_id: str) -> dict | None:
     return _decorate_room(found, user_id) if found else None
 
 
+def _fits(room_start: datetime, room_end: datetime, start: datetime, end: datetime) -> bool:
+    """The requested window is a hard boundary: the room sits inside it, or shares at least an hour."""
+    inside = start <= room_start and room_end <= end
+    shared = min(room_end, end) - max(room_start, start)
+    return inside or shared >= timedelta(hours=1)
+
+
 def eligible_rooms(course_id: str, starts_at: str, ends_at: str, user_id: str, open_time: bool = False) -> list[dict]:
-    """Rooms for the same subject. A specific time must overlap; any time shows every open room."""
+    """Rooms for the same subject. A specific time must fit (see _fits); any time shows every open room."""
     start, end = _clock(starts_at), _clock(ends_at)
     if start is None or end is None or end <= start:
         return []
-    family = _family(course_id)
     rows = []
     for room in store.rooms():
-        if _family(room["course_id"]) != family:
+        if not _subject_fits(course_id, room["course_id"]):
             continue
         room_start, room_end = _clock(room["starts_at"]), _clock(room["ends_at"])
         if room_start is None or room_end is None:
             continue
-        if not open_time and (room_end <= start or room_start >= end):
+        if not open_time and not _fits(room_start, room_end, start, end):
             continue
         rows.append(_decorate_room(room, user_id))
     rows.sort(key=lambda row: (row["full"], row["starts_at"], row["place_name"]))
@@ -507,15 +587,34 @@ def rooms_you_can_join(
 
 
 def _schedule_view(
-    request: Request, open_room: str = "", course_id: str | None = None, starts_at: str = "", ends_at: str = ""
+    request: Request,
+    open_room: str = "",
+    course_id: str | None = None,
+    starts_at: str = "",
+    ends_at: str = "",
+    place_type: str = "",
+    note: str = "",
+    said: str = "",
 ) -> dict:
     user = request.session.get("user") or {}
     user_id = user.get("id", "")
     rooms = rooms_you_can_join(user_id, course_id, starts_at, ends_at)
+    ranking = room_matching.RoomRanking()
+    asked = _asked_factors(said)
+    if course_id and starts_at and ends_at and place_type:
+        rooms = room_matching.hard_filter(rooms, asked, user_id)
+        ranking = room_matching.rank(rooms, user_id, course_id, starts_at, ends_at, place_type, note)
+        rooms = room_matching.apply(rooms, ranking)
+        anytime = _is_anytime_span(starts_at, ends_at)
+        for room in rooms:
+            room["fits"] = room_matching.reasons(
+                room, asked, _course_record(course_id)["code"],
+                None if anytime else pretty_range(starts_at, ends_at),
+            )
     selected = opened_room(open_room, user_id) if open_room else None
     if selected and selected["id"] not in {room["id"] for room in rooms}:
         selected = None
-    return {"rooms": rooms, "selected": selected}
+    return {"rooms": rooms, "selected": selected, "ranking": ranking, **_room_choices()}
 
 
 def _form_only(
@@ -598,7 +697,8 @@ def session_page(
         store.resize_hosted(
             user.get("id", ""), context["course"]["id"], context["new_place"], starts_at, ends_at, spoken
         )
-    context.update(_schedule_view(request, open, context["course"]["id"], starts_at, ends_at))
+    said = " ".join([sentence, *(turn.get("text", "") for turn in thread if turn.get("role") == "user")])
+    context.update(_schedule_view(request, open, context["course"]["id"], starts_at, ends_at, place_type, note, said))
     if discarded == "1":
         context["proposal"] = None
         context["conflict"] = None
@@ -798,7 +898,15 @@ def open_room(
     room_starts, room_ends = chosen if chosen else (starts_at, ends_at)
     place_name = _place_name(place_type, note)
     host = _member(request)
-    already = store.hosted_room(host["id"], course["id"], place_name, room_starts, room_ends) is not None
+    existing = store.hosted_room(host["id"], course["id"], place_name, room_starts, room_ends)
+    try:
+        check_room_time(request, [p["id"] for p in existing["members"]] if existing else [],
+                        existing["starts_at"] if existing else room_starts,
+                        existing["ends_at"] if existing else room_ends)
+    except ValueError as exc:
+        return _redirect_session(course["id"], starts_at, ends_at, place_type, note, study_anyway,
+                                 sentence=sentence, error=str(exc))
+    already = existing is not None
     left_another = store.holds_other_seat(host["id"], room_starts, room_ends, course["id"], place_name)
     room = store.create_room(
         host,
@@ -827,6 +935,72 @@ def open_room(
         sentence=sentence,
         open_room=room["id"],
     )
+
+
+def _room_choices() -> dict:
+    """What a host can pick in Room settings: subjects or their courses, and the known places."""
+    owned = _profile_courses() or store.courses()
+    subjects = [{"id": f"subject:{key}", "label": label} for key, label in _SUBJECT_LABELS.items()]
+    return {
+        "subject_choices": [*subjects[-1:], *subjects[:-1], *({"id": c["id"], "label": c["code"]} for c in owned)],
+        "place_choices": [{"name": place["name"], "kind": place["kind"], "label": f"{place['name']} ({PLACE_LABELS[place['kind']]})"}
+                          for place in store.places()],
+    }
+
+
+_SETTINGS_NOTICES = {
+    "updated": "Room settings saved.",
+    "host": "Only the host can change the room.",
+    "missing": "That room is no longer open.",
+    "size": "A room is for 2 to 5 people.",
+    "crowded": "The room already has more people than that size. Choose a larger size.",
+}
+
+
+@router.post("/session/rooms/{room_id}/settings")
+def change_room_settings(
+    request: Request,
+    room_id: str,
+    course_id: str = Form(...),
+    starts_at: str = Form(...),
+    ends_at: str = Form(...),
+    place_type: str = Form(...),
+    note: str = Form(""),
+    study_anyway: str = Form("0"),
+    sentence: str = Form(""),
+    room_course: str = Form(...),
+    room_place: str = Form(...),
+    room_capacity: str = Form(...),
+    room_day: str = Form(...),
+    room_start: str = Form(...),
+    room_end: str = Form(...),
+):
+    keep = dict(sentence=sentence, open_room=room_id)
+    chosen = _picked_time(room_day, room_start, room_end)
+    place = next((item for item in store.places() if item["name"] == room_place), None)
+    try:
+        capacity = int(room_capacity)
+    except ValueError:
+        capacity = 0
+    if chosen is None or place is None:
+        return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, **keep,
+                                 error="Choose a place, a day, and a start time earlier than the end time.")
+    user = request.session.get("user") or {}
+    room = next((item for item in store.rooms() if item["id"] == room_id), None)
+    if room and room["host_id"] == user.get("id") and (chosen[0], chosen[1]) != (room["starts_at"], room["ends_at"]):
+        try:
+            check_room_time(request, [p["id"] for p in room["members"]], chosen[0], chosen[1])
+        except ValueError as exc:
+            return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, **keep, error=str(exc))
+    course = _course_record(room_course)
+    result = store.update_room_settings(
+        room_id, user.get("id", ""), course_id=course["id"], course_code=course["code"], place_type=place["kind"],
+        place_name=place["name"], capacity=capacity, starts_at=chosen[0], ends_at=chosen[1],
+    )
+    notice = _SETTINGS_NOTICES.get(result, _SETTINGS_NOTICES["missing"])
+    if result != "updated":
+        return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, **keep, error=notice)
+    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, notice, **keep)
 
 
 @router.post("/session/rooms/{room_id}/time")
@@ -858,6 +1032,13 @@ def change_room_time(
             error="Choose a day and a start time that is earlier than the end time.",
         )
     user = request.session.get("user") or {}
+    room = next((item for item in store.rooms() if item["id"] == room_id), None)
+    if room and room["host_id"] == user.get("id"):
+        try:
+            check_room_time(request, [p["id"] for p in room["members"]], chosen[0], chosen[1])
+        except ValueError as exc:
+            return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway,
+                                     sentence=sentence, open_room=room_id, error=str(exc))
     result = store.update_room_time(room_id, user.get("id", ""), chosen[0], chosen[1])
     notice = {
         "updated": "Time updated.",
@@ -899,6 +1080,15 @@ def join_room(
     study_anyway: str = Form("0"),
     sentence: str = Form(""),
 ):
+    room = next((item for item in store.rooms() if item["id"] == room_id), None)
+    if room:
+        try:
+            check_room_time(request, [p["id"] for p in room["members"]], room["starts_at"], room["ends_at"])
+        except ValueError as exc:
+            if not starts_at:
+                return _schedule_redirect(room_id, str(exc), True)
+            return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway,
+                                     sentence=sentence, open_room=room_id, error=str(exc))
     result = store.join_room(room_id, _member(request))
     notice = _ROOM_NOTICES.get(result, "That room is no longer open.")
     if not starts_at:

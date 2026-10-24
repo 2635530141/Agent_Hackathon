@@ -642,6 +642,33 @@ def update_room_time(room_id: str, user_id: str, starts_at: str, ends_at: str) -
     return "updated"
 
 
+def update_room_settings(
+    room_id: str,
+    user_id: str,
+    *,
+    course_id: str,
+    course_code: str,
+    place_type: str,
+    place_name: str,
+    capacity: int,
+    starts_at: str,
+    ends_at: str,
+) -> str:
+    """The host edits their room. It never shrinks below the people already in it."""
+    room = next((item for item in _rooms if item["id"] == room_id), None)
+    if room is None:
+        return "missing"
+    if room["host_id"] != user_id:
+        return "host"
+    if not 2 <= capacity <= 5:
+        return "size"
+    if capacity < len(room["members"]):
+        return "crowded"
+    room.update(course_id=course_id, course_code=course_code, place_type=place_type, place_name=place_name,
+                capacity=capacity, starts_at=starts_at, ends_at=ends_at)
+    return "updated"
+
+
 def join_room(room_id: str, member: dict) -> str:
     room = next((item for item in _rooms if item["id"] == room_id), None)
     if room is None:

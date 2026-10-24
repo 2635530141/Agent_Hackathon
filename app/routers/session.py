@@ -165,6 +165,28 @@ def _is_open_time(turns: list[dict]) -> bool:
     return bool(_ANYTIME.search(" ".join(user_turns)))
 
 
+_STYLE_WORDS = (
+    ("quiet", re.compile(r"\b(?:quiet|silent|silence|focus(?:ed)?)\b", re.IGNORECASE)),
+    ("talk", re.compile(r"\b(?:talk|talking|discuss|discussion|chat|out loud)\b", re.IGNORECASE)),
+    ("drill", re.compile(r"\b(?:drill|drilling|practice|problem sets?|practice problems)\b", re.IGNORECASE)),
+)
+_PLACE_WORDS = (("library", r"librar|lib\b|\bdoe\b"), ("coffee", r"coffee|cafe|café"), ("outdoor", r"outdoor|outside|glade"))
+_NEGATED = r"\b(?:not|no|avoid|never|without)\b(?:\W+\w+){0,3}?\W+(?:%s)"
+
+
+def _asked_factors(text: str) -> room_matching.Asked:
+    """Only what the student said; anything else is left to the soft ranking."""
+    avoid = {kind for kind, pattern in _PLACE_WORDS if re.search(_NEGATED % pattern, text, re.IGNORECASE)}
+    place = _mentioned_place(text) or None
+    return room_matching.Asked(
+        place=place if place not in avoid else None,
+        avoid=avoid,
+        size=_spoken_group_size(text),
+        at_least=bool(re.search(r"\bat least\s+\d", text, re.IGNORECASE)),
+        style=next((key for key, pattern in _STYLE_WORDS if pattern.search(text)), None),
+    )
+
+
 def _spoken_group_size(text: str) -> int | None:
     """'at least 4 people' is a room of 4. The profile size is the fallback."""
     found = [int(match.group(1) or match.group(2)) for match in _GROUP_SIZE.finditer(text)]
@@ -421,9 +443,21 @@ def _family(course_id: str) -> str:
     return label or course_id.lower()
 
 
-def _same_subject(asked: str, room: str) -> bool:
-    """General study fits every room, and a general room welcomes every subject."""
-    return "any" in (asked, room) or asked == room
+def _course_key(course_id: str) -> str:
+    found = store.course_by_id(course_id)
+    return (found["code"] if found else course_id).lower().replace(" ", "")
+
+
+def _subject_fits(asked_id: str, room_id: str) -> bool:
+    """General study fits every room and a general room welcomes everyone. A subject
+    (a range) fits any room in it. A named course fits that course, or a room open to
+    its whole subject."""
+    asked, room = _family(asked_id), _family(room_id)
+    if "any" in (asked, room):
+        return True
+    if asked_id.startswith("subject:") or room_id.startswith("subject:"):
+        return asked == room
+    return _course_key(asked_id) == _course_key(room_id)
 
 
 def _place_name(place_type: str, note: str) -> str:
@@ -509,10 +543,9 @@ def eligible_rooms(course_id: str, starts_at: str, ends_at: str, user_id: str, o
     start, end = _clock(starts_at), _clock(ends_at)
     if start is None or end is None or end <= start:
         return []
-    family = _family(course_id)
     rows = []
     for room in store.rooms():
-        if not _same_subject(family, _family(room["course_id"])):
+        if not _subject_fits(course_id, room["course_id"]):
             continue
         room_start, room_end = _clock(room["starts_at"]), _clock(room["ends_at"])
         if room_start is None or room_end is None:
@@ -543,18 +576,27 @@ def _schedule_view(
     ends_at: str = "",
     place_type: str = "",
     note: str = "",
+    said: str = "",
 ) -> dict:
     user = request.session.get("user") or {}
     user_id = user.get("id", "")
     rooms = rooms_you_can_join(user_id, course_id, starts_at, ends_at)
     ranking = room_matching.RoomRanking()
+    asked = _asked_factors(said)
     if course_id and starts_at and ends_at and place_type:
+        rooms = room_matching.hard_filter(rooms, asked, user_id)
         ranking = room_matching.rank(rooms, user_id, course_id, starts_at, ends_at, place_type, note)
         rooms = room_matching.apply(rooms, ranking)
+        anytime = _is_anytime_span(starts_at, ends_at)
+        for room in rooms:
+            room["fits"] = room_matching.reasons(
+                room, asked, _course_record(course_id)["code"],
+                None if anytime else pretty_range(starts_at, ends_at),
+            )
     selected = opened_room(open_room, user_id) if open_room else None
     if selected and selected["id"] not in {room["id"] for room in rooms}:
         selected = None
-    return {"rooms": rooms, "selected": selected, "ranking": ranking}
+    return {"rooms": rooms, "selected": selected, "ranking": ranking, **_room_choices()}
 
 
 def _form_only(
@@ -637,7 +679,8 @@ def session_page(
         store.resize_hosted(
             user.get("id", ""), context["course"]["id"], context["new_place"], starts_at, ends_at, spoken
         )
-    context.update(_schedule_view(request, open, context["course"]["id"], starts_at, ends_at, place_type, note))
+    said = " ".join([sentence, *(turn.get("text", "") for turn in thread if turn.get("role") == "user")])
+    context.update(_schedule_view(request, open, context["course"]["id"], starts_at, ends_at, place_type, note, said))
     if discarded == "1":
         context["proposal"] = None
         context["conflict"] = None
@@ -874,6 +917,72 @@ def open_room(
         sentence=sentence,
         open_room=room["id"],
     )
+
+
+def _room_choices() -> dict:
+    """What a host can pick in Room settings: subjects or their courses, and the known places."""
+    owned = _profile_courses() or store.courses()
+    subjects = [{"id": f"subject:{key}", "label": label} for key, label in _SUBJECT_LABELS.items()]
+    return {
+        "subject_choices": [*subjects[-1:], *subjects[:-1], *({"id": c["id"], "label": c["code"]} for c in owned)],
+        "place_choices": [{"name": place["name"], "kind": place["kind"], "label": f"{place['name']} ({PLACE_LABELS[place['kind']]})"}
+                          for place in store.places()],
+    }
+
+
+_SETTINGS_NOTICES = {
+    "updated": "Room settings saved.",
+    "host": "Only the host can change the room.",
+    "missing": "That room is no longer open.",
+    "size": "A room is for 2 to 5 people.",
+    "crowded": "The room already has more people than that size. Choose a larger size.",
+}
+
+
+@router.post("/session/rooms/{room_id}/settings")
+def change_room_settings(
+    request: Request,
+    room_id: str,
+    course_id: str = Form(...),
+    starts_at: str = Form(...),
+    ends_at: str = Form(...),
+    place_type: str = Form(...),
+    note: str = Form(""),
+    study_anyway: str = Form("0"),
+    sentence: str = Form(""),
+    room_course: str = Form(...),
+    room_place: str = Form(...),
+    room_capacity: str = Form(...),
+    room_day: str = Form(...),
+    room_start: str = Form(...),
+    room_end: str = Form(...),
+):
+    keep = dict(sentence=sentence, open_room=room_id)
+    chosen = _picked_time(room_day, room_start, room_end)
+    place = next((item for item in store.places() if item["name"] == room_place), None)
+    try:
+        capacity = int(room_capacity)
+    except ValueError:
+        capacity = 0
+    if chosen is None or place is None:
+        return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, **keep,
+                                 error="Choose a place, a day, and a start time earlier than the end time.")
+    user = request.session.get("user") or {}
+    room = next((item for item in store.rooms() if item["id"] == room_id), None)
+    if room and room["host_id"] == user.get("id") and (chosen[0], chosen[1]) != (room["starts_at"], room["ends_at"]):
+        try:
+            check_room_time(request, [p["id"] for p in room["members"]], chosen[0], chosen[1])
+        except ValueError as exc:
+            return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, **keep, error=str(exc))
+    course = _course_record(room_course)
+    result = store.update_room_settings(
+        room_id, user.get("id", ""), course_id=course["id"], course_code=course["code"], place_type=place["kind"],
+        place_name=place["name"], capacity=capacity, starts_at=chosen[0], ends_at=chosen[1],
+    )
+    notice = _SETTINGS_NOTICES.get(result, _SETTINGS_NOTICES["missing"])
+    if result != "updated":
+        return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, **keep, error=notice)
+    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, notice, **keep)
 
 
 @router.post("/session/rooms/{room_id}/time")

@@ -186,10 +186,22 @@ def login():
 def test_session_page_shows_the_ranked_board(model):
     model(answer())
     page = login().get("/session", params={"ready": "1", "course_id": "cs61a", "starts_at": THU[1], "ends_at": THU[2],
-                                           "place_type": "library", "sentence": "CS 61A thursday 6 to 9 in the lib"}).text
+                                           "place_type": "coffee", "sentence": "CS 61A thursday 6 to 9"}).text
     titles = re.findall(r"<h3>([^<]+)</h3>", page)
     assert titles[:2] == ["Doe Library", "Yali&#39;s Cafe"]
     assert "Best match." in page and "Jordan&#39;s Doe Library room" in page
+    assert "Assistant: why room_doe_thu" in page
+
+
+def test_said_place_is_a_hard_boundary_and_each_room_says_why(model):
+    model(answer(ranking=("room_doe_thu",), runner_ups=[]))
+    page = login().get("/session", params={"ready": "1", "course_id": "cs61a", "starts_at": THU[1], "ends_at": THU[2],
+                                           "place_type": "library", "sentence": "CS 61A thursday 6 to 9 in the lib"}).text
+    titles = re.findall(r"<h3>([^<]+)</h3>", page)
+    assert "Yali&#39;s Cafe" not in titles and titles[0] == "Doe Library"
+    for line in ("Fits your time: 7:00 PM–9:00 PM, inside Thu 29 Oct, 6:00 PM–9:00 PM.",
+                 "Any CS course covers CS 61A.", "Doe Library is a library, as you asked.", "2 seats open."):
+        assert line in page.replace("&#39;", "'")
 
 
 def test_session_page_without_a_model_says_so(model):

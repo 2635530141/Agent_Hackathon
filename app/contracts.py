@@ -4,14 +4,16 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-StudyStyle = Literal["quiet", "talk", "drill"]
+StudyStyleChoice = Literal["quiet", "talk", "drill"]
+# "any" means no preference. Only the derived single study_style uses it.
+StudyStyle = Literal["quiet", "talk", "drill", "any"]
 Anchor = Literal["home", "campus"]
 PlaceType = Literal["coffee", "library", "outdoor"]
-GroupSize = Literal[2, 3, 4]
+GroupSize = Literal[2, 3, 4, 5]
 BusySource = Literal["weekly", "exam", "calendar", "exception"]
 InvitationStatus = Literal["draft", "pending", "accepted", "declined"]
-Gender = Literal["", "woman", "man", "nonbinary"]
-SessionStyle = Literal["quiet focus", "talk it through", "drill practice questions"]
+GenderChoice = Literal["male", "female", "other"]
+Gender = Literal["", "male", "female", "other"]
 
 
 class Course(BaseModel):
@@ -21,15 +23,26 @@ class Course(BaseModel):
 
 
 class PublicProfile(BaseModel):
+    """study_styles, group_min/group_max, and place_note are the student's answers.
+
+    study_style and group_size are derived from them so older matching code
+    keeps working: the first ticked style ("any" when none), and group_min.
+    """
+
     id: str
     name: str
     study_style: StudyStyle
+    study_styles: list[StudyStyleChoice] = []
+    study_style_note: str = ""
     radius_meters: int
     anchor: Anchor
     anchor_lat: float
     anchor_lng: float
     group_size: GroupSize
+    group_min: int = Field(default=2, ge=2, le=5)
+    group_max: int = Field(default=2, ge=2, le=5)
     place_types: list[PlaceType]
+    place_note: str = ""
     major: str
     year: int = Field(ge=1, le=5)
     course_ids: list[str]
@@ -43,6 +56,7 @@ class PrivateProfile(PublicProfile):
     street_address: str
     gender_self: Gender = ""
     gender_preference: Gender = ""
+    gender_preference: list[GenderChoice] = []
     under_18: bool = False
 
 

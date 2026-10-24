@@ -372,7 +372,7 @@ def _course_code(course_id: str) -> str:
     return next((course["code"] for course in courses() if course["id"] == course_id), course_id)
 
 
-def find_matches(request: StudyRequest, inputs: Inputs) -> tuple[list[Candidate], list[tuple[str, int]], bool, str]:
+def find_matches(request: StudyRequest, inputs: Inputs, duration_minutes: int | None = None) -> tuple[list[Candidate], list[tuple[str, int]], bool, str]:
     """Hard filters, then the soft ranking.
 
     Returns the ranked candidates, the filter funnel, whether the candidates are
@@ -382,7 +382,11 @@ def find_matches(request: StudyRequest, inputs: Inputs) -> tuple[list[Candidate]
     me = inputs.me
     code = _course_code(request.course_id)
     start, end = _parse(request.starts_at), _parse(request.ends_at)
-    min_len = min(MIN_OVERLAP, end - start)
+    # Explicit agent duration is independent of the search window. Existing callers
+    # retain the legacy policy and scoring weights.
+    min_len = timedelta(minutes=duration_minutes) if duration_minutes is not None else min(MIN_OVERLAP, end - start)
+    if min_len <= timedelta(0) or min_len > end-start:
+        raise ValueError("Duration must fit inside the study window.")
 
     eligible = set(inputs.eligible_ids)
     pool = [person for person in inputs.people if person.profile.id in eligible and person.profile.id != me.profile.id]

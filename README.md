@@ -395,6 +395,8 @@ Build the card against a fake proposal and a fake busy block first. Wire it to m
 
 ## Skeleton
 
+The bounded planning loop is available at `/agent`: clarification, read-only tools, approval recheck and conflict replanning. See [scope, tools, setup and evaluation](docs/agent-loop.md). Local rule demo and Omnara mode are explicitly distinguished; no live model, email or calendar write is implied.
+
 Shared app shell and visual system. Feature tracks fill in their own pages. The style catalog is the source of truth for UI.
 
 ```powershell

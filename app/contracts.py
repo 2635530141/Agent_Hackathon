@@ -11,6 +11,7 @@ GroupSize = Literal[2, 3, 4]
 BusySource = Literal["weekly", "exam", "calendar", "exception"]
 InvitationStatus = Literal["draft", "pending", "accepted", "declined"]
 Gender = Literal["", "woman", "man", "nonbinary"]
+SessionStyle = Literal["quiet focus", "talk it through", "drill practice questions"]
 
 
 class Course(BaseModel):
@@ -32,6 +33,7 @@ class PublicProfile(BaseModel):
     major: str
     year: int = Field(ge=1, le=5)
     course_ids: list[str]
+    bio: str = ""
 
 
 class PrivateProfile(PublicProfile):
@@ -79,6 +81,7 @@ class StudyRequest(BaseModel):
     place_type: PlaceType
     note: str = ""
     study_anyway: bool = False
+    session_style: SessionStyle | None = None
 
 
 class ProposalPerson(BaseModel):
@@ -100,6 +103,12 @@ class ProposalPlace(BaseModel):
     map_url: str
 
 
+class RankedCandidate(BaseModel):
+    id: str
+    first_name: str
+    why: str = ""
+
+
 class Proposal(BaseModel):
     people: list[ProposalPerson]
     starts_at: str
@@ -107,6 +116,11 @@ class Proposal(BaseModel):
     place: ProposalPlace
     reason: str
     invite: str
+    ranking: list[RankedCandidate] = []
+    runner_ups: list[str] = []
+    near_tie: bool = False
+    flags: list[dict] = []
+    source: Literal["model", "manual"] = "model"
 
 
 class Invitation(BaseModel):

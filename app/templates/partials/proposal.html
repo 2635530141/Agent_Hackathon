@@ -25,6 +25,10 @@
     <input type="hidden" name="note" value="{{ note }}">
     <input type="hidden" name="study_anyway" value="{{ '1' if study_anyway else '0' }}">
     <input type="hidden" name="sentence" value="{{ sentence }}">
+    <input type="hidden" name="session_style" value="{{ session_style }}">
+    <input type="hidden" name="approved_ids" value="{{ proposal.people | map(attribute='id') | join(',') }}">
+    <input type="hidden" name="approved_starts_at" value="{{ proposal.starts_at }}">
+    <input type="hidden" name="approved_ends_at" value="{{ proposal.ends_at }}">
     <label class="field">
       <span class="label">Invite</span>
       <textarea name="invite">{{ proposal.invite }}</textarea>
@@ -36,6 +40,16 @@
       <a class="button quiet" href="/session?discarded=1">Discard</a>
       <button class="button primary" type="submit" formaction="/session/confirm">Approve</button>
     </div>
+    {% if proposal.ranking %}
+    <details class="hint">
+      <summary>Ranking{% if proposal.near_tie %} · close call{% endif %}</summary>
+      <ol>
+        {% for row in proposal.ranking %}
+        <li><strong>{{ row.first_name }}</strong>{% if row.why %} · {{ row.why }}{% endif %}</li>
+        {% endfor %}
+      </ol>
+    </details>
+    {% endif %}
   </form>
   {% else %}
   <label class="field">

@@ -1,0 +1,18 @@
+{
+  "id": "N3",
+  "title": "Same as N2, but the note says style matters more than distance",
+  "requester": {"radius_meters": 1500},
+  "people": [
+    {"id": "u_near", "name": "Nora Talk", "study_style": "talk"},
+    {"id": "u_far", "name": "Fay Quiet", "anchor": "home", "anchor_lat": 37.8044, "anchor_lng": -122.2712, "radius_meters": 1000}
+  ],
+  "request": {"note": "I really need someone quiet, I don't mind travelling"},
+  "recorded_output": {
+    "no_match": false, "chosen_ids": ["u_far"],
+    "slot": {"starts_at": "2026-10-27T19:00-07:00", "ends_at": "2026-10-27T21:00-07:00"},
+    "reason": "Your note puts a quiet partner ahead of distance, so Fay, who studies in quiet focus, is chosen even though she is outside both travel radii.",
+    "ranking": [{"id": "u_far", "why": "quiet focus, as the note asks"}, {"id": "u_near", "why": "nearby but talks it through"}],
+    "runner_ups": ["u_near"], "near_tie": false, "flags": [], "alternative": null
+  },
+  "expect": {"chosen": ["u_far"], "reason_mentions": ["note"]}
+}

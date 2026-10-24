@@ -4,7 +4,7 @@
 <div class="stack-lg">
   <div class="stack">
     <h1 class="title">Matching and places</h1>
-    <p class="lede">This page is the scorer. It takes a course, a time, and a place that are already filled in, then shows who was filtered and how they ranked. The session page is where a sentence becomes that object.</p>
+    <p class="lede">This page is the time Filter. It takes a course, a time, and a place that are already filled in and shows who is free with you then, with the facts the matching assistant will judge. No model is called here; the session page runs Advise.</p>
   </div>
 
   <form method="get" action="/matching" class="card stack">
@@ -86,15 +86,15 @@
 
     <section class="stack">
       {% if rows %}
-      <h2 class="section-title">Ranking{% if result.later %} · next free slot{% endif %}</h2>
+      <h2 class="section-title">Free in your window{% if result.later %} · none, next free windows{% endif %}</h2>
       <ul class="busy-list">
         {% for row in rows %}
         <li class="busy-row">
           <span><strong>{{ row.first_name }}</strong> · {{ row.major }} · year {{ row.year }}</span>
-          <span class="chip">{{ row.score }}</span>
+          <span class="chip">{{ row.style }}</span>
           <span class="meta">{{ row.slot }}</span>
         </li>
-        <li class="hint">{% for key, value in row.parts.items() %}{{ key }} {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}</li>
+        <li class="hint">shares {{ row.shared_courses | join(", ") or "no course" }} · {{ row.minutes_away }} min away · {% if row.within_radius.requester %}inside{% else %}outside{% endif %} your radius</li>
         {% endfor %}
       </ul>
       {% endif %}

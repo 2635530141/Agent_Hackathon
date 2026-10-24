@@ -1,9 +1,10 @@
 """Matching and places track (David).
 
-Deterministic matching. No model picks the person: hard filters and a weighted
-score do, and the reason and invite are built from those results.
-It may only use PublicProfile, eligible ids, and busy intervals without titles.
-It must not read the private profile or call Google Calendar.
+Filter -> Advise. The only hard constraint in code is time: a candidate must be
+free inside the requested window. Everything else (course, style, distance,
+exams, the note) goes to the model as facts, and Advise chooses among the ids the
+Filter returned. It may only use PublicProfile, eligible ids, and busy intervals
+without titles. It must not read the private profile or call Google Calendar.
 """
 
 import logging
@@ -12,13 +13,27 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 
-from app.contracts import Exam, MatchBusyInterval, Proposal, ProposalPerson, ProposalPlace, PublicProfile, StudyRequest
+from app import advise as advise_step
+from app import matching_prompt
+from app.contracts import Exam, MatchBusyInterval, Proposal, ProposalPerson, ProposalPlace, PublicProfile, RankedCandidate, StudyRequest
 from app.format import pretty_range
 from app.profile_core import PLACE_LABELS, STYLE_LABELS, eligible_student_ids, public_profile, public_profile_of
-from app.schedule_core import BLOCKING_SOURCES, DAYS, list_busy_for_match, list_exams, weekly_hours
-from app.store import courses, generated_drafts, invite_text, places, remember_draft, swaps_for
+from app.schedule_core import BLOCKING_SOURCES, list_busy_for_match, list_exams, weekly_hours
+from app.store import (
+    cache_advice,
+    cached_advice,
+    clear_advice,
+    courses,
+    generated_drafts,
+    invite_text,
+    manual_pick,
+    places,
+    remember_draft,
+    set_manual_pick,
+    swaps_for,
+)
 from app.schedule_core import matching_free_time
-from app.scheduling.time import parse_instant, local_input, display_zone
+from app.scheduling.time import parse_instant, local_input, local_iso, display_zone
 from app.scheduling.fixture_math import free_time as fixture_free_time
 from zoneinfo import ZoneInfo
 
@@ -26,39 +41,33 @@ log = logging.getLogger(__name__)
 
 Interval = tuple[datetime, datetime]
 
-TOP_N = 5
+FILTER_LIMIT = 12
+OTHER_FREE_LIMIT = 3
+BIO_LIMIT = 300
 NOTE_LIMIT = 300
-NEAR_TIE = 5.0
 MIN_OVERLAP = timedelta(minutes=60)
 SEARCH_DAYS = 14
 WALK_METERS_PER_MINUTE = 80
-WEIGHTS = {
-    "overlap": 40.0,
-    "exam": 15.0,
-    "priority": 10.0,
-    "style": 10.0,
-    "major": 5.0,
-    "year": 5.0,
-    "place": 5.0,
-    "distance": 5.0,
-    "group": 5.0,
-}
+TOP_N = 5
 PLACE_NOUNS = {"coffee": "a coffee shop", "library": "a library", "outdoor": "an outdoor spot"}
-TIEBREAK_LABELS = {
-    "overlap": "more free time in your window",
-    "exam": "the same upcoming exam",
-    "priority": "the exam priority window",
-    "style": "the same study style",
-    "major": "the same major",
-    "year": "a closer year",
-    "place": "liking this kind of place",
-    "distance": "a shorter trip",
-    "group": "wanting the same group size",
-}
+SESSION_STYLES = {"quiet": "quiet focus", "talk": "talk it through", "drill": "drill practice questions"}
+MANUAL_MESSAGE = "The matching assistant could not produce a valid proposal. Pick someone from the list."
 
 
 class NoMatch(Exception):
     """Nothing to propose. The message is safe to show the organizer."""
+
+
+class StaleProposal(NoMatch):
+    """Send re-check failed. The cached Advise answer is dropped and Advise runs again."""
+
+
+class ManualPick(NoMatch):
+    """Advise failed twice or is unavailable. The page shows the Filter list to pick from."""
+
+    def __init__(self, message: str, rows: list[dict]):
+        super().__init__(message)
+        self.rows = rows
 
 
 @dataclass
@@ -83,12 +92,12 @@ class Inputs:
 
 @dataclass
 class Candidate:
+    """A Filter result: free time with the requester, plus facts for the model."""
+
     person: Person
-    score: float
-    parts: dict[str, float]
     free: list[Interval]
-    distance_m: float
-    shared_exam: Exam | None = None
+    other_free: list[Interval]
+    facts: dict
 
 
 @dataclass
@@ -108,6 +117,10 @@ class MatchResult:
     later: bool = False
     proposal: Proposal | None = None
     message: str = ""
+    advice: dict | None = None
+    manual: bool = False
+    model_ranking: list[dict] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 def _parse(value: str) -> datetime:
@@ -203,6 +216,11 @@ def _between(a: PublicProfile, b: PublicProfile) -> float:
     return _meters(a.anchor_lat, a.anchor_lng, b.anchor_lat, b.anchor_lng)
 
 
+def injection_alert(source: str, detail) -> None:
+    """The team's injection alert: one WARNING line per detection, picked up by monitoring."""
+    log.warning("INJECTION_ALERT source=%s detail=%s", source, detail)
+
+
 # Note
 
 
@@ -261,7 +279,7 @@ def _note_time(text: str, start: datetime, end: datetime) -> tuple[datetime, dat
     if found:
         h1, m1, mer1, h2, m2, mer2 = found.groups()
         first = _clock(h1, m1, mer1 or mer2)
-        second = _clock(h2, m2, mer2)
+        second = _clock(h2, m2, mer2 or ("pm" if first and first.hour >= 12 and not mer1 else None))
         if first and second and first >= second and not mer1:
             first = _clock(h1, m1, "am")
         if first and second and first < second:
@@ -287,7 +305,7 @@ def read_note(note: str, place_type: str, preferred: list[str], start: datetime,
     if not text.strip():
         return reading
     if INJECTION.search(text):
-        log.warning("note contains an instruction or address; only place and time were read")
+        injection_alert("note", "the note contains an instruction or an address; only place and time were read")
     wanted = []
     for kind, pattern in PLACE_WORDS.items():
         if re.search(NEGATION + rf"(?:{pattern})\b", text):
@@ -321,129 +339,160 @@ def read_note(note: str, place_type: str, preferred: list[str], start: datetime,
     return reading
 
 
-# Scoring
-
-
-def _upcoming(exams: list[Exam], course_id: str, after: datetime) -> list[Exam]:
-    return [exam for exam in exams if exam.course_id == course_id and _parse(exam.starts_at) > after]
-
-
-def _in_priority(exams: list[Exam], start: datetime) -> bool:
-    return any(
-        exam.priority_starts_at and _parse(exam.priority_starts_at) <= start < _parse(exam.starts_at)
-        for exam in exams
-    )
-
-
-def score(me: Person, other: Person, request: StudyRequest, free: list[Interval]) -> Candidate:
-    start, end = _parse(request.starts_at), _parse(request.ends_at)
-    mine = _upcoming(me.exams, request.course_id, start)
-    theirs = _upcoming(other.exams, request.course_id, start)
-    shared = next(
-        (exam for exam in theirs if any(_parse(exam.starts_at).date() == _parse(own.starts_at).date() for own in mine)),
-        None,
-    )
-    distance = _between(me.profile, other.profile)
-    reach = me.profile.radius_meters + other.profile.radius_meters
-    year_gap = abs(me.profile.year - other.profile.year)
-    group_gap = abs(me.profile.group_size - other.profile.group_size)
-    parts = {
-        "overlap": WEIGHTS["overlap"] * min(1.0, _total(free) / (end - start)),
-        "exam": WEIGHTS["exam"] if shared else 0.0,
-        "priority": WEIGHTS["priority"] if shared and _in_priority(mine + theirs, start) else 0.0,
-        "style": WEIGHTS["style"] if me.profile.study_style == other.profile.study_style else 0.0,
-        "major": WEIGHTS["major"] if me.profile.major.lower() == other.profile.major.lower() else 0.0,
-        "year": WEIGHTS["year"] * {0: 1.0, 1: 0.5}.get(year_gap, 0.0),
-        "place": WEIGHTS["place"] if request.place_type in other.profile.place_types else 0.0,
-        "distance": WEIGHTS["distance"] * max(0.0, 1 - distance / reach) if reach else 0.0,
-        "group": WEIGHTS["group"] * {0: 1.0, 1: 0.5}.get(group_gap, 0.0),
-    }
-    return Candidate(
-        person=other,
-        score=round(sum(parts.values()), 1),
-        parts={key: round(value, 1) for key, value in parts.items()},
-        free=free,
-        distance_m=distance,
-        shared_exam=shared,
-    )
+# Filter
 
 
 def _course_code(course_id: str) -> str:
     return next((course["code"] for course in courses() if course["id"] == course_id), course_id)
 
 
-def find_matches(request: StudyRequest, inputs: Inputs, duration_minutes: int | None = None) -> tuple[list[Candidate], list[tuple[str, int]], bool, str]:
-    """Hard filters, then the soft ranking.
+def _window_rows(intervals: list[Interval]) -> list[dict]:
+    return [{"starts_at": local_iso(start), "ends_at": local_iso(end)} for start, end in intervals]
 
-    Returns the ranked candidates, the filter funnel, whether the candidates are
-    for a later slot because nobody fits the requested one, and a message when
-    there is nobody at all.
+
+def _minutes(meters: float) -> int:
+    return math.ceil(meters / WALK_METERS_PER_MINUTE)
+
+
+def _exam_rows(me: Person, other: Person, start: datetime) -> list[dict]:
+    zone = ZoneInfo(display_zone())
+    mine = {(exam.course_id, _parse(exam.starts_at).astimezone(zone).date()) for exam in me.exams}
+    rows = []
+    for exam in other.exams:
+        when = _parse(exam.starts_at)
+        if when <= start:
+            continue
+        window = exam.priority_starts_at and _parse(exam.priority_starts_at) <= start < when
+        rows.append({
+            "course": _course_code(exam.course_id),
+            "date": when.astimezone(zone).date().isoformat(),
+            "in_priority_window": bool(window),
+            "same_exam_as_requester": (exam.course_id, when.astimezone(zone).date()) in mine,
+        })
+    return rows
+
+
+def candidate_facts(me: Person, other: Person, start: datetime, free: list[Interval], other_free: list[Interval]) -> dict:
+    """Exactly the fields build_matching_message() documents. Nothing private."""
+    distance = _between(me.profile, other.profile)
+    minutes = _minutes(distance)
+    mine = set(me.profile.course_ids)
+    return {
+        "id": other.profile.id,
+        "first_name": other.first_name,
+        "major": other.profile.major,
+        "year": other.profile.year,
+        "courses": [_course_code(course) for course in other.profile.course_ids],
+        "shared_courses": [_course_code(course) for course in other.profile.course_ids if course in mine],
+        "style": SESSION_STYLES[other.profile.study_style],
+        "exams": _exam_rows(me, other, start),
+        "free_overlap": _window_rows(free),
+        "other_free": _window_rows(other_free),
+        "within_radius": {
+            "requester": distance <= me.profile.radius_meters,
+            "candidate": distance <= other.profile.radius_meters,
+        },
+        "minutes_away": {"requester": minutes, "candidate": minutes},
+        "bio": other.profile.bio[:BIO_LIMIT],
+    }
+
+
+def _own_window(me: Person, request: StudyRequest, start: datetime, end: datetime) -> list[Interval]:
+    mine = free_time(me, start, end)
+    if request.study_anyway:
+        own = [
+            (_parse(block.starts_at), _parse(block.ends_at))
+            for block in me.busy
+            if block.source in ("calendar", "exception") and block.kind != "free"
+        ]
+        mine = _merge(mine + _intersect(_merge(own), [(start, end)]))
+    return mine
+
+
+def find_matches(request: StudyRequest, inputs: Inputs, duration_minutes: int | None = None) -> tuple[list[Candidate], list[tuple[str, int]], bool, str]:
+    """The time Filter. The only hard constraint: free together inside the requested window.
+
+    Weekly hours, one-off blocks, exams, and calendar intervals all count, and the
+    other person's calendar has no override. Course, radius, style, and year are
+    facts on each record, never filters. Gender preference and age were applied
+    by the profile service when it produced eligible_ids.
+    Returns up to FILTER_LIMIT candidates ordered by overlap length, the funnel,
+    whether they only have later windows (nobody is free in the requested one),
+    and a message when there is nobody.
     """
     me = inputs.me
-    code = _course_code(request.course_id)
     start, end = _parse(request.starts_at), _parse(request.ends_at)
-    # Explicit agent duration is independent of the search window. Existing callers
-    # retain the legacy policy and scoring weights.
     min_len = timedelta(minutes=duration_minutes) if duration_minutes is not None else min(MIN_OVERLAP, end - start)
-    if min_len <= timedelta(0) or min_len > end-start:
+    if min_len <= timedelta(0) or min_len > end - start:
         raise ValueError("Duration must fit inside the study window.")
 
     eligible = set(inputs.eligible_ids)
     pool = [person for person in inputs.people if person.profile.id in eligible and person.profile.id != me.profile.id]
-    course = [person for person in pool if request.course_id in person.profile.course_ids]
-    reach = [
-        person
-        for person in course
-        if _between(me.profile, person.profile) <= me.profile.radius_meters + person.profile.radius_meters
-    ]
-
-    mine = free_time(me, start, end)
-    ranked = []
-    for person in reach:
-        free = _intersect(mine, free_time(person, start, end))
-        longest = _longest(free)
-        if longest and longest[1] - longest[0] >= min_len:
-            ranked.append(score(me, person, request, free))
-    funnel = [
-        ("eligible", len(pool)),
-        (f"take {code}", len(course)),
-        ("within both radii", len(reach)),
-        ("free in your window", len(ranked)),
-    ]
-    if ranked:
-        ranked.sort(key=lambda cand: (-cand.score, cand.person.profile.id))
-        return ranked[:TOP_N], funnel, False, ""
-
-    if not course:
-        return [], funnel, False, f"Nobody else has listed {code} yet."
-    if not reach:
-        return [], funnel, False, f"Nobody taking {code} is within reach of your travel radius."
-
+    mine = _own_window(me, request, start, end)
     horizon = start + timedelta(days=SEARCH_DAYS)
     mine_later = free_time(me, start, horizon)
-    later = []
-    for person in reach:
-        free = [
+    found = []
+    for person in pool:
+        free = [(s, e) for s, e in _intersect(mine, free_time(person, start, end)) if e - s >= min_len]
+        later = [
             (s, e)
             for s, e in _intersect(mine_later, free_time(person, start, horizon))
             if e - s >= min_len and not (s < end and e > start)
-        ]
-        if free:
-            cand = score(me, person, request, free[:1])
-            cand.free = free
-            later.append(cand)
+        ][:OTHER_FREE_LIMIT]
+        found.append(Candidate(person, free, later, candidate_facts(me, person, start, free, later)))
+
+    free_now = [cand for cand in found if cand.free]
+    funnel = [("eligible", len(pool)), ("free in your window", len(free_now))]
+    if free_now:
+        free_now.sort(key=lambda cand: (-_total(cand.free), cand.person.profile.id))
+        return free_now[:FILTER_LIMIT], funnel, False, ""
+    if not pool:
+        return [], funnel, False, "Nobody else is eligible to match yet."
+    later = [cand for cand in found if cand.other_free]
     if not later:
-        return [], funnel, False, f"Nobody taking {code} is free then, or in the next two weeks."
-    later.sort(key=lambda cand: (cand.free[0][0], -cand.score, cand.person.profile.id))
-    return later[:TOP_N], funnel, True, ""
+        return [], funnel, False, "Nobody is free then, or in the next two weeks."
+    later.sort(key=lambda cand: (cand.other_free[0][0], cand.person.profile.id))
+    return later[:FILTER_LIMIT], funnel, True, ""
 
 
-def pick_group(ranked: list[Candidate], needed: int, min_len: timedelta, earliest: bool) -> tuple[list[Candidate], Interval | None]:
-    """Greedy: add the next candidate while everyone still shares a long enough window."""
+def request_facts(request: StudyRequest, me: Person) -> dict:
+    start, end = _parse(request.starts_at), _parse(request.ends_at)
+    return {
+        "course_id": request.course_id,
+        "course_code": _course_code(request.course_id),
+        "window": {"starts_at": local_iso(start), "ends_at": local_iso(end)},
+        "min_minutes": int(min(MIN_OVERLAP, end - start).total_seconds() // 60),
+        "group_size": me.profile.group_size,
+        "place_type": request.place_type,
+        "session_style": request.session_style,
+        "note": request.note[:NOTE_LIMIT],
+    }
+
+
+def requester_brief(me: Person) -> dict:
+    """get_profile's snapshot: public fields only, no coordinates or private data."""
+    return {
+        "first_name": me.first_name,
+        "major": me.profile.major,
+        "year": me.profile.year,
+        "courses": [_course_code(course) for course in me.profile.course_ids],
+        "style": SESSION_STYLES[me.profile.study_style],
+        "group_size": me.profile.group_size,
+        "place_types": me.profile.place_types,
+        "exams": [
+            {"course": _course_code(exam.course_id), "date": _parse(exam.starts_at).astimezone(ZoneInfo(display_zone())).date().isoformat()}
+            for exam in me.exams
+        ],
+    }
+
+
+def pick_group(ordered: list[Candidate], needed: int, min_len: timedelta, earliest: bool) -> tuple[list[Candidate], Interval | None]:
+    """Greedy over a given order: add the next person while everyone still shares a long enough window."""
     group: list[Candidate] = []
     common: list[Interval] | None = None
-    for cand in ranked:
-        trial = cand.free if common is None else _intersect(common, cand.free)
+    for cand in ordered:
+        windows = cand.other_free if earliest else cand.free
+        trial = windows if common is None else _intersect(common, windows)
         trial = [(s, e) for s, e in trial if e - s >= min_len]
         if trial:
             group.append(cand)
@@ -512,62 +561,20 @@ def _names(people: list[Person]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
 
-def _tiebreak(winner: Candidate, runner_up: Candidate) -> str:
-    edges = sorted(
-        ((winner.parts[key] - runner_up.parts[key], key) for key in winner.parts),
-        reverse=True,
-    )
-    reasons = [TIEBREAK_LABELS[key] for gap, key in edges if gap > 0][:2]
-    if not reasons:
-        return f"Close call with {runner_up.person.first_name}: they tie on every factor. Swap to see them."
-    return f"Close call with {runner_up.person.first_name}; {winner.person.first_name} wins on {' and '.join(reasons)}."
-
-
-def _reason(
-    request: StudyRequest,
-    group: list[Candidate],
-    window: Interval,
-    place: dict,
-    later: bool,
-    ranked: list[Candidate],
-    notes: list[str],
-) -> str:
-    code = _course_code(request.course_id)
-    people = [cand.person for cand in group]
-    when = pretty_range(_iso(window[0]), _iso(window[1]))
-    plural = len(people) > 1
-    lines = []
-    if later:
-        asked = pretty_range(request.starts_at, request.ends_at)
-        lines.append(
-            f"Nobody taking {code} is free {asked}. {_names(people)} {'share' if plural else 'shares'} {code} "
-            f"and {'are' if plural else 'is'} free {when}, the next time you are both open."
-        )
-    else:
-        lines.append(f"{_names(people)} {'share' if plural else 'shares'} {code} and {'are' if plural else 'is'} free {when}.")
-    exams = [cand.shared_exam for cand in group if cand.shared_exam]
-    if exams:
-        exam_day = _parse(exams[0].starts_at)
-        line = f"You are both preparing for the {code} exam on {exam_day:%a} {exam_day.day} {exam_day:%b}"
-        if any(cand.parts["priority"] for cand in group):
-            line += ", and this is in its priority window"
-        lines.append(line + ".")
+def _place_lines(request: StudyRequest, place: dict, plural: bool) -> list[str]:
     hours = place["hours"][:1].lower() + place["hours"][1:]
     minutes = place["walk_minutes"]
-    lines.append(
+    lines = [
         f"{place['name']} is {PLACE_NOUNS[place['kind']]}, {hours}, rating {place['rating']}, "
         f"within {minutes} minute{'' if minutes == 1 else 's'} of {'all' if plural else 'both'} of you."
-    )
+    ]
     if place["kind"] != request.place_type:
         lines.append(f"No {PLACE_NOUNS[request.place_type].split(' ', 1)[1]} fits, so this is the closest match.")
     if not place["inside"]:
         lines.append("Nothing fits inside every travel radius, so this is the nearest option.")
     if not place["open"]:
         lines.append("Nothing on the list is open for the whole session. Check the hours.")
-    others = [cand for cand in ranked if cand not in group]
-    if others and not later and group[0] is ranked[0] and group[0].score - others[0].score <= NEAR_TIE:
-        lines.append(_tiebreak(group[0], others[0]))
-    return " ".join(lines + notes)
+    return lines
 
 
 def _invite(request: StudyRequest, people: list[Person], window: Interval, place: dict) -> str:
@@ -597,10 +604,39 @@ def load_inputs() -> Inputs:
     return Inputs(me=me, people=people, eligible_ids=eligible)
 
 
-def match(request: StudyRequest, inputs: Inputs | None = None, swap_person: int = 0, swap_place: int = 0) -> MatchResult:
-    """Interpret the note, score, pick the group and the place, and draft the copy."""
-    inputs = inputs or load_inputs()
-    me = inputs.me
+def advise_client() -> advise_step.ModelClient:
+    """The model behind Advise. Tests replace this."""
+    return advise_step.OmnaraAdviseClient()
+
+
+def manual_rows(candidates: list[Candidate], model_ranking: list[dict]) -> list[dict]:
+    """The Filter list for the manual pick, in the model's order when it parsed."""
+    order = [row["id"] for row in model_ranking]
+    why = {row["id"]: row.get("why", "") for row in model_ranking}
+    ranked = sorted(candidates, key=lambda cand: (order.index(cand.person.profile.id) if cand.person.profile.id in order else len(order)))
+    rows = []
+    for cand in ranked:
+        window = cand.other_free[0] if not cand.free and cand.other_free else _longest(cand.free)
+        rows.append({
+            "id": cand.person.profile.id,
+            "first_name": cand.person.first_name,
+            "major": cand.person.profile.major,
+            "year": cand.person.profile.year,
+            "shared_courses": cand.facts["shared_courses"],
+            "slot": pretty_range(_iso(window[0]), _iso(window[1])) if window else "",
+            "why": why.get(cand.person.profile.id, ""),
+        })
+    return rows
+
+
+def _log_advice(output: dict) -> None:
+    log.info("advise proposal near_tie=%s flags=%s", output.get("near_tie"), output.get("flags"))
+    if output.get("flags"):
+        injection_alert("advise", output["flags"])
+
+
+def _prepare(request: StudyRequest, me: Person) -> tuple[StudyRequest, NoteReading, datetime, datetime]:
+    """Check the times and apply the note's place and time, before the Filter runs."""
     try:
         start, end = _parse(request.starts_at), _parse(request.ends_at)
     except ValueError:
@@ -620,16 +656,78 @@ def match(request: StudyRequest, inputs: Inputs | None = None, swap_person: int 
                 f"Your note moves the session to {pretty_range(request.starts_at, request.ends_at)}, "
                 "which overlaps your own busy time. Pick another time."
             )
+    return request, note, start, end
 
-    ranked, funnel, later, message = find_matches(request, inputs)
-    if not ranked:
+
+def filter_preview(request: StudyRequest, inputs: Inputs | None = None) -> MatchResult:
+    """The Filter alone, for the /matching debug page. No model call."""
+    inputs = inputs or load_inputs()
+    request, _, _, _ = _prepare(request, inputs.me)
+    candidates, funnel, later, message = find_matches(request, inputs)
+    return MatchResult(request=request, candidates=candidates, funnel=funnel, later=later, message=message)
+
+
+def match(
+    request: StudyRequest,
+    inputs: Inputs | None = None,
+    swap_person: int = 0,
+    swap_place: int = 0,
+    client: advise_step.ModelClient | None = None,
+    advice: dict | None = None,
+    pick: str | None = None,
+) -> MatchResult:
+    """Read the note, run the time Filter, Advise (or reuse `advice`), then place and invite."""
+    if matching_prompt.IS_STAND_IN:
+        log.warning("Advise is using the stand-in matching_prompt.py; add the team's file.")
+    inputs = inputs or load_inputs()
+    me = inputs.me
+    request, note, start, end = _prepare(request, me)
+    candidates, funnel, later, message = find_matches(request, inputs)
+    if not candidates:
         return MatchResult(request=request, candidates=[], funnel=funnel, message=message)
-
-    shift = swap_person % len(ranked)
-    order = ranked[shift:] + ranked[:shift]
+    facts = request_facts(request, me)
+    records = [cand.facts for cand in candidates]
+    by_id = {cand.person.profile.id: cand for cand in candidates}
     needed = me.profile.group_size - 1
     min_len = min(MIN_OVERLAP, end - start)
-    group, window = pick_group(order, needed, min_len, earliest=later)
+
+    if pick:
+        if pick not in by_id:
+            raise StaleProposal("That student is no longer free then. Pick again.")
+        order = [by_id[pick]] + [cand for cand in candidates if cand.person.profile.id != pick]
+        group, window = pick_group(order, needed, min_len, earliest=later)
+        output = {"no_match": later, "chosen_ids": [], "ranking": [], "runner_ups": [], "near_tie": False, "flags": [],
+                  "reason": f"You picked {by_id[pick].person.first_name} from the list."}
+        source = "manual"
+    else:
+        if advice is not None and matching_prompt.validate_match(advice, facts, records):
+            advice = None
+        if advice is None:
+            result = advise_step.advise(facts, requester_brief(me), records, client or advise_client())
+            if not result.ok:
+                log.info("advise failed after %s attempt(s): %s", result.attempts, result.errors)
+                return MatchResult(request=request, candidates=candidates, funnel=funnel, later=later,
+                                   message=MANUAL_MESSAGE, manual=True, model_ranking=result.ranking, errors=result.errors)
+            advice = result.output
+            _log_advice(advice)
+        output = advice
+        source = "model"
+        ranked_ids = [row["id"] for row in output["ranking"] if row["id"] in by_id]
+        chosen = output["alternative"]["ids"] if output["no_match"] else output["chosen_ids"]
+        order_ids = list(dict.fromkeys(chosen + ranked_ids + [cand.person.profile.id for cand in candidates]))
+        shift = swap_person % len(order_ids)
+        if shift == 0:
+            group = [by_id[cand_id] for cand_id in chosen]
+            slot = output["alternative"] if output["no_match"] else output["slot"]
+            window = (_parse(slot["starts_at"]), _parse(slot["ends_at"]))
+        else:
+            rotated = order_ids[shift:] + order_ids[:shift]
+            group, window = pick_group([by_id[cand_id] for cand_id in rotated], needed, min_len, earliest=output["no_match"])
+        later = output["no_match"]
+
+    if not group or window is None:
+        return MatchResult(request=request, candidates=candidates, funnel=funnel, later=later, message=MANUAL_MESSAGE,
+                           manual=True, model_ranking=output.get("ranking", []))
     if later:
         window = (window[0], min(window[1], window[0] + (end - start)))
     notes = list(note.used)
@@ -640,6 +738,21 @@ def match(request: StudyRequest, inputs: Inputs | None = None, swap_person: int 
     options = suggest_places(request.place_type, profiles, window[0], window[1], note.avoid, me.profile.place_types)
     place = options[swap_place % len(options)]
 
+    lead = group[0].person.profile.id
+    why = {row["id"]: row.get("why", "") for row in output["ranking"]}
+    chosen_now = [cand.person.profile.id for cand in group]
+    model_pick = source == "model" and chosen_now == (output["alternative"]["ids"] if output["no_match"] else output["chosen_ids"])
+    if model_pick:
+        reason = output["reason"]
+    elif source == "model":
+        reason = f"You swapped to {_names([cand.person for cand in group])}. {why.get(lead, '')}".strip()
+    else:
+        reason = output["reason"]
+    when = pretty_range(_iso(window[0]), _iso(window[1]))
+    lines = [reason, f"Free {when}."] if not model_pick else [reason]
+    lines += _place_lines(request, place, len(group) > 1) + notes
+
+    first = {cand.person.profile.id: cand.person.first_name for cand in candidates}
     proposal = Proposal(
         people=[
             ProposalPerson(
@@ -661,19 +774,26 @@ def match(request: StudyRequest, inputs: Inputs | None = None, swap_person: int 
             rating=place["rating"],
             map_url=place["map_url"],
         ),
-        reason=_reason(request, group, window, place, later, ranked, notes),
+        reason=" ".join(line for line in lines if line),
         invite=_invite(request, [cand.person for cand in group], window, place),
+        ranking=[RankedCandidate(id=row["id"], first_name=first[row["id"]], why=row.get("why", ""))
+                 for row in output["ranking"] if row["id"] in first],
+        runner_ups=output["runner_ups"],
+        near_tie=output["near_tie"],
+        flags=output["flags"],
+        source=source,
     )
-    return MatchResult(request=request, candidates=ranked, funnel=funnel, later=later, proposal=proposal)
+    return MatchResult(request=request, candidates=candidates, funnel=funnel, later=later, proposal=proposal,
+                       advice=output if source == "model" else None)
 
 
-def build_proposal(
-    course_code: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool = False
-) -> Proposal:
-    """Session page entry point. Raises NoMatch with a message for the page."""
+def _request(course_code: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool,
+             session_style: str | None) -> tuple[StudyRequest, str]:
     course_id = next((course["id"] for course in courses() if course["code"] == course_code), course_code)
     if place_type not in PLACE_LABELS:
         place_type = public_profile().place_types[0]
+    if session_style not in SESSION_STYLES.values():
+        session_style = None
     request = StudyRequest(
         course_id=course_id,
         starts_at=starts_at,
@@ -681,18 +801,90 @@ def build_proposal(
         place_type=place_type,
         note=note,
         study_anyway=study_anyway,
+        session_style=session_style,
     )
-    key = "|".join([course_id, starts_at, ends_at, place_type, note, str(study_anyway)])
+    key = "|".join([course_id, starts_at, ends_at, place_type, note, str(study_anyway), session_style or ""])
+    return request, key
+
+
+def build_proposal(
+    course_code: str,
+    starts_at: str,
+    ends_at: str,
+    place_type: str,
+    note: str,
+    study_anyway: bool = False,
+    session_style: str | None = None,
+) -> Proposal:
+    """Session page entry point. Raises NoMatch, or ManualPick with the list to pick from."""
+    request, key = _request(course_code, starts_at, ends_at, place_type, note, study_anyway, session_style)
     swap_person, swap_place = swaps_for(key)
-    result = match(request, swap_person=swap_person, swap_place=swap_place)
+    result = match(request, swap_person=swap_person, swap_place=swap_place, advice=cached_advice(key), pick=manual_pick(key))
+    if result.manual:
+        raise ManualPick(result.message, manual_rows(result.candidates, result.model_ranking))
     if result.proposal is None:
         raise NoMatch(result.message)
+    if result.advice is not None:
+        cache_advice(key, result.advice)
     proposal = result.proposal
     saved = invite_text().strip()
     drafts = generated_drafts(key)
     if drafts and saved and saved not in drafts:
         return proposal.model_copy(update={"invite": saved})
     remember_draft(key, proposal.invite)
+    return proposal
+
+
+def choose_manually(
+    course_code: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool,
+    session_style: str | None, student_id: str,
+) -> None:
+    """Manual pick after Advise failed. Advise then only writes the card around this person."""
+    _, key = _request(course_code, starts_at, ends_at, place_type, note, study_anyway, session_style)
+    set_manual_pick(key, student_id)
+
+
+def recheck_for_send(
+    course_code: str,
+    starts_at: str,
+    ends_at: str,
+    place_type: str,
+    note: str,
+    study_anyway: bool,
+    session_style: str | None,
+    approved_ids: list[str],
+    approved_starts_at: str,
+    approved_ends_at: str,
+) -> Proposal:
+    """Executor re-check before Send: re-run the time Filter, confirm every approved id
+    is still in it, and that the approved slot still sits inside each one's free window.
+    A failure drops the cached Advise answer, so the page runs Advise again."""
+    request, key = _request(course_code, starts_at, ends_at, place_type, note, study_anyway, session_style)
+    inputs = load_inputs()
+    request, _, _, _ = _prepare(request, inputs.me)
+    candidates, _, later, _ = find_matches(request, inputs)
+    records = [cand.facts for cand in candidates]
+    facts = request_facts(request, inputs.me)
+    errors = [f"{cand_id} is no longer free" for cand_id in approved_ids if cand_id not in {r["id"] for r in records}]
+    slot = {"starts_at": approved_starts_at, "ends_at": approved_ends_at}
+    if not errors and not later:
+        errors = matching_prompt.slot_errors(slot, approved_ids, facts, records)
+    elif not errors:
+        later_records = [{**r, "free_overlap": r["other_free"]} for r in records]
+        errors = matching_prompt.slot_errors(slot, approved_ids, {**facts, "window": {
+            "starts_at": approved_starts_at, "ends_at": approved_ends_at}}, later_records)
+    if not approved_ids:
+        errors.append("nothing was approved")
+    if errors:
+        log.info("send re-check failed: %s", errors)
+        clear_advice(key)
+        raise StaleProposal("Their availability changed before sending. A new proposal replaces the old one.")
+    proposal = build_proposal(course_code, starts_at, ends_at, place_type, note, study_anyway, session_style)
+    if [person.id for person in proposal.people] != approved_ids or (proposal.starts_at, proposal.ends_at) != (
+        _iso(_parse(approved_starts_at)), _iso(_parse(approved_ends_at))
+    ):
+        clear_advice(key)
+        raise StaleProposal("The proposal changed before sending. Review the new one.")
     return proposal
 
 
@@ -706,10 +898,10 @@ def match_context() -> dict:
 
 
 def candidate_rows(result: MatchResult) -> list[dict]:
-    """Debug view of the ranking. Ids, scores, and the shared slot only."""
+    """Debug view of the Filter: facts per candidate, no scores."""
     rows = []
     for cand in result.candidates:
-        window = cand.free[0] if result.later else _longest(cand.free)
+        window = cand.other_free[0] if result.later and cand.other_free else _longest(cand.free)
         rows.append(
             {
                 "id": cand.person.profile.id,
@@ -717,8 +909,9 @@ def candidate_rows(result: MatchResult) -> list[dict]:
                 "year": cand.person.profile.year,
                 "major": cand.person.profile.major,
                 "style": STYLE_LABELS[cand.person.profile.study_style],
-                "score": cand.score,
-                "parts": cand.parts,
+                "shared_courses": cand.facts["shared_courses"],
+                "within_radius": cand.facts["within_radius"],
+                "minutes_away": cand.facts["minutes_away"]["requester"],
                 "slot": pretty_range(_iso(window[0]), _iso(window[1])) if window else "",
             }
         )

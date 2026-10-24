@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from app import matching_core, schedule_core, store
 from app.format import pretty_range
 from app.omnara_client import OmnaraError, interpret_request
+from app.matching_core import SESSION_STYLES
 from app.profile_core import PLACE_LABELS, public_profile
 from app.web import render
 from app.scheduling.session_hooks import refresh_before_request, export_card
@@ -18,10 +19,18 @@ DEFAULT_END = "2026-10-29T21:00"
 
 
 def _query(
-    course_id: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool, sentence: str
+    course_id: str,
+    starts_at: str,
+    ends_at: str,
+    place_type: str,
+    note: str,
+    study_anyway: bool,
+    sentence: str,
+    session_style: str = "",
 ) -> str:
     return urlencode(
         {
+            "session_style": session_style,
             "sentence": sentence,
             "ready": "1",
             "course_id": course_id,
@@ -82,7 +91,14 @@ def _parsed(raw: dict, courses: list[dict]) -> dict:
 
 
 def _session_context(
-    course_id: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool, sentence: str
+    course_id: str,
+    starts_at: str,
+    ends_at: str,
+    place_type: str,
+    note: str,
+    study_anyway: bool,
+    sentence: str,
+    session_style: str = "",
 ):
     course = _course_record(course_id)
     error = ""
@@ -92,6 +108,7 @@ def _session_context(
     except ValueError as exc:
         error = str(exc)
     proposal = None
+    manual_pick = []
     when = ""
     try:
         asked_when = pretty_range(starts_at, ends_at)
@@ -99,8 +116,13 @@ def _session_context(
         asked_when = ""
     if conflict is None and not error:
         try:
-            proposal = matching_core.build_proposal(course["code"], starts_at, ends_at, place_type, note, study_anyway)
+            proposal = matching_core.build_proposal(
+                course["code"], starts_at, ends_at, place_type, note, study_anyway, session_style or None
+            )
             when = pretty_range(proposal.starts_at, proposal.ends_at)
+        except matching_core.ManualPick as exc:
+            error = str(exc)
+            manual_pick = exc.rows
         except matching_core.NoMatch as exc:
             error = str(exc)
     return {
@@ -127,11 +149,15 @@ def _session_context(
             note,
             False,
             sentence,
+            session_style,
         )
         if conflict and conflict.get("alternative_start")
         else "",
-        "anyway_href": "/session?" + _query(course["id"], starts_at, ends_at, place_type, note, True, sentence),
+        "anyway_href": "/session?" + _query(course["id"], starts_at, ends_at, place_type, note, True, sentence, session_style),
         "proposal": proposal,
+        "manual_pick": manual_pick,
+        "session_style": session_style,
+        "session_styles": tuple(SESSION_STYLES.values()),
         "when": when,
         "asked_when": asked_when,
         "invites": store.latest_invitations(),
@@ -140,7 +166,7 @@ def _session_context(
         "calendar_written": store.calendar_event_written(),
         "sentence": sentence,
         "ready": True,
-        "keep": _query(course["id"], starts_at, ends_at, place_type, note, study_anyway, sentence),
+        "keep": _query(course["id"], starts_at, ends_at, place_type, note, study_anyway, sentence, session_style),
     }
 
 
@@ -152,6 +178,9 @@ def _form_only(request: Request, sentence: str, error: str = "", notice: str = "
         nav="session",
         sentence=sentence,
         ready=False,
+        session_style="",
+        session_styles=tuple(SESSION_STYLES.values()),
+        manual_pick=[],
         course=catalog[0],
         courses=catalog,
         starts_at="",
@@ -186,10 +215,11 @@ def session_page(
     study_anyway: str = "0",
     notice: str = "",
     discarded: str = "0",
+    session_style: str = "",
 ):
     if ready != "1":
         return _form_only(request, sentence, notice=notice)
-    context = _session_context(course_id, starts_at, ends_at, place_type, note, study_anyway == "1", sentence)
+    context = _session_context(course_id, starts_at, ends_at, place_type, note, study_anyway == "1", sentence, session_style)
     if discarded == "1":
         context["proposal"] = None
         context["conflict"] = None
@@ -198,7 +228,7 @@ def session_page(
 
 
 @router.post("/session/interpret")
-def interpret(request: Request, sentence: str = Form("")):
+def interpret(request: Request, sentence: str = Form(""), session_style: str = Form("")):
     text = sentence.strip()
     if not text:
         return _form_only(request, "", error="Write what you want to study.")
@@ -216,6 +246,7 @@ def interpret(request: Request, sentence: str = Form("")):
         parsed["note"],
         "0",
         sentence=text,
+        session_style=session_style,
     )
 
 
@@ -228,8 +259,9 @@ def _redirect_session(
     study_anyway: str,
     notice: str = "",
     sentence: str = "",
+    session_style: str = "",
 ) -> RedirectResponse:
-    query = _query(course_id, starts_at, ends_at, place_type, note, study_anyway == "1", sentence)
+    query = _query(course_id, starts_at, ends_at, place_type, note, study_anyway == "1", sentence, session_style)
     if notice:
         query += "&notice=" + quote(notice)
     return RedirectResponse(f"/session?{query}", status_code=303)
@@ -245,10 +277,12 @@ def save_draft(
     study_anyway: str = Form("0"),
     invite: str = Form(""),
     sentence: str = Form(""),
+    session_style: str = Form(""),
 ):
     store.set_invite_text(invite)
     return _redirect_session(
-        course_id, starts_at, ends_at, place_type, note, study_anyway, "Draft saved.", sentence=sentence
+        course_id, starts_at, ends_at, place_type, note, study_anyway, "Draft saved.", sentence=sentence,
+        session_style=session_style,
     )
 
 
@@ -262,10 +296,11 @@ def swap_person(
     study_anyway: str = Form("0"),
     invite: str = Form(""),
     sentence: str = Form(""),
+    session_style: str = Form(""),
 ):
     store.set_invite_text(invite)
     store.cycle_person()
-    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, sentence=sentence)
+    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, sentence=sentence, session_style=session_style)
 
 
 @router.post("/session/swap-place")
@@ -278,10 +313,30 @@ def swap_place(
     study_anyway: str = Form("0"),
     invite: str = Form(""),
     sentence: str = Form(""),
+    session_style: str = Form(""),
 ):
     store.set_invite_text(invite)
     store.cycle_place()
-    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, sentence=sentence)
+    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, sentence=sentence, session_style=session_style)
+
+
+@router.post("/session/pick")
+def pick_person(
+    course_id: str = Form(...),
+    starts_at: str = Form(...),
+    ends_at: str = Form(...),
+    place_type: str = Form(...),
+    note: str = Form(""),
+    study_anyway: str = Form("0"),
+    sentence: str = Form(""),
+    session_style: str = Form(""),
+    student_id: str = Form(...),
+):
+    course = _course_record(course_id)
+    matching_core.choose_manually(
+        course["code"], starts_at, ends_at, place_type, note, study_anyway == "1", session_style or None, student_id
+    )
+    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, sentence=sentence, session_style=session_style)
 
 
 @router.post("/session/confirm")
@@ -295,6 +350,10 @@ def confirm_invite(
     study_anyway: str = Form("0"),
     invite: str = Form(""),
     sentence: str = Form(""),
+    session_style: str = Form(""),
+    approved_ids: str = Form(""),
+    approved_starts_at: str = Form(""),
+    approved_ends_at: str = Form(""),
 ):
     course = _course_record(course_id)
     try:
@@ -312,15 +371,18 @@ def confirm_invite(
             study_anyway,
             "Pick a conflict-free time before sending.",
             sentence=sentence,
+            session_style=session_style,
         )
     store.set_invite_text(invite)
     try:
-        proposal = matching_core.build_proposal(
-            course["code"], starts_at, ends_at, place_type, note, study_anyway == "1"
+        proposal = matching_core.recheck_for_send(
+            course["code"], starts_at, ends_at, place_type, note, study_anyway == "1", session_style or None,
+            [item for item in approved_ids.split(",") if item], approved_starts_at, approved_ends_at,
         )
     except matching_core.NoMatch as exc:
         return _redirect_session(
-            course["id"], starts_at, ends_at, place_type, note, study_anyway, str(exc), sentence=sentence
+            course["id"], starts_at, ends_at, place_type, note, study_anyway, str(exc), sentence=sentence,
+            session_style=session_style,
         )
     message = invite.strip() or proposal.invite
     store.create_invitations(
@@ -348,6 +410,7 @@ def confirm_invite(
         study_anyway,
         "Invitation sent for this demo. Nothing is emailed until an email provider is connected.",
         sentence=sentence,
+        session_style=session_style,
     )
 
 

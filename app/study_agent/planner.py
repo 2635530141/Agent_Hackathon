@@ -14,6 +14,9 @@ from .state import event
 from .tools import TOOL_SCHEMAS, group_options, missing, profile_brief, digest
 
 
+TOOL_CALL_CAP = 6
+
+
 class PlannerError(Exception):
     pass
 
@@ -49,13 +52,21 @@ class DemoPlanner:
             return {"action": "clarify"}
         call("get_profile", {})
         result = call("find_matches", {})
+        # The time Filter can return up to twelve people, so only start an option the
+        # six-call budget can finish (check, places, validate); then report no match.
+        remaining = TOOL_CALL_CAP - 2
         for ids, start in group_options(result["candidates"], result["group_size"], result["duration_minutes"]):
+            if remaining < 3:
+                break
             args = {"candidate_ids": ids, "starts_at": start}
+            remaining -= 1
             if not call("check_availability", args)["available"]:
                 continue
+            remaining -= 1
             places = call("suggest_places", args)["places"]
             if not places:
                 continue
+            remaining -= 1
             validation = call("validate_proposal", {**args, "place_id": places[0]["id"]})
             if validation["valid"]:
                 return {"action": "propose", "evidence_id": validation["evidence_id"]}

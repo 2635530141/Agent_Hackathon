@@ -24,7 +24,7 @@ def _run(course_id: str, starts_at: str, ends_at: str, place_type: str, note: st
         study_anyway=study_anyway == "1",
     )
     try:
-        return matching_core.match(request), ""
+        return matching_core.filter_preview(request), ""
     except matching_core.NoMatch as exc:
         return None, str(exc)
 

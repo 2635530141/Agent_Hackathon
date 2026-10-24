@@ -86,7 +86,10 @@ def test_thirty_minute_duration_in_three_hour_window_does_not_require_sixty():
     service = AgentService()
     run = act(service,service.create(store.OWNER_ID,"Study",goal={**GOAL,"duration_minutes":30}),"retry")
     assert run["state"] == "proposed"
-    assert run["proposal"]["candidate_ids"] == ["u_jordan"]
+    # The time Filter keeps Jordan, who has only these 30 minutes; without scores the
+    # local demo policy takes the longest overlap first, which is Ben.
+    assert "u_jordan" in [cand["id"] for cand in StudyTools(run).find_matches()["candidates"]]
+    assert run["proposal"]["candidate_ids"] == ["u_ben"]
     assert run["proposal"]["starts_at"] == "2026-10-30T02:00:00+00:00"
     assert run["proposal"]["ends_at"] == "2026-10-30T02:30:00+00:00"
 

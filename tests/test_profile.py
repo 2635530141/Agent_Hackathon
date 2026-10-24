@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import profile_core, store
+from app import accounts, profile_core, store
 from app.contracts import PrivateProfile
 from app.main import app
 
@@ -19,7 +19,9 @@ def restore_owner():
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    client = TestClient(app)
+    client.post("/login", data={"email": accounts.TEST_EMAIL, "password": accounts.TEST_PASSWORD})
+    return client
 
 
 def _set_owner(**fields):

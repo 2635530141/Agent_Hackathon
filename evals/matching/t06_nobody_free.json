@@ -1,0 +1,18 @@
+{
+  "id": "T6",
+  "title": "Nobody is free in the window: no_match with an alternative from other_free",
+  "requester": {},
+  "people": [
+    {"id": "u_alex", "name": "Alex Kim", "busy": [["calendar", "2026-10-27T17:00", "2026-10-27T22:00"]]},
+    {"id": "u_bo", "name": "Bo Wu", "weekly": {"thu": ["18:00", "21:00"]}}
+  ],
+  "request": {},
+  "recorded_output": {
+    "no_match": true, "chosen_ids": [], "slot": null,
+    "reason": "Nobody is free Tuesday 7-9 PM. Alex shares CS 61A and is free Wednesday from 5 PM.",
+    "ranking": [{"id": "u_alex", "why": "same course, free Wednesday"}, {"id": "u_bo", "why": "same course, free Thursday"}],
+    "runner_ups": [], "near_tie": false, "flags": [],
+    "alternative": {"ids": ["u_alex"], "starts_at": "2026-10-28T17:00-07:00", "ends_at": "2026-10-28T19:00-07:00"}
+  },
+  "expect": {"no_match": true, "alternative_in_other_free": true, "filter_excludes": ["u_alex", "u_bo"]}
+}

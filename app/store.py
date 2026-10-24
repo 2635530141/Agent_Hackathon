@@ -236,7 +236,7 @@ _student_busy = {
 }
 _person_index = 0
 _place_index = 0
-_invite = "Want to work through CS 61A problem sets at Yali's Cafe on Thursday at 7?"
+_invite = ""
 _invitations: dict[str, dict] = {}
 _latest_batch_ids: list[str] = []
 _calendar_written = False

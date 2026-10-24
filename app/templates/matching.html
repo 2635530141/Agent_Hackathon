@@ -4,7 +4,7 @@
 <div class="stack-lg">
   <div class="stack">
     <h1 class="title">Matching and places</h1>
-    <p class="lede">David owns <code>app/matching_core.py</code>. Hard filters and a weighted score pick the person; no model is involved. Try a request below to see the funnel, the ranking, and the proposal it produces.</p>
+    <p class="lede">This page is the scorer. It takes a course, a time, and a place that are already filled in, then shows who was filtered and how they ranked. The session page is where a sentence becomes that object.</p>
   </div>
 
   <form method="get" action="/matching" class="card stack">
@@ -40,7 +40,7 @@
     </label>
     <label class="choice">
       <input type="checkbox" name="study_anyway" value="1" {% if form.study_anyway %}checked{% endif %}>
-      Study anyway (ignore only my own calendar events)
+      Study anyway (ignore my own busy time)
     </label>
     <div class="cluster">
       <button class="button primary" type="submit">Run matching</button>
@@ -64,7 +64,7 @@
         <dt>Courses</dt><dd>{{ profile.course_ids | join(", ") }}</dd>
         <dt>Eligible ids</dt><dd>{{ eligible_ids | join(", ") }}</dd>
       </dl>
-      <h2>Schedule, without titles</h2>
+      <h2>Busy, without titles</h2>
       <ul class="busy-list">
         {% for block in busy_rows %}
         <li class="busy-row">

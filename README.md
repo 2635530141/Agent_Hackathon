@@ -395,8 +395,6 @@ Build the card against a fake proposal and a fake busy block first. Wire it to m
 
 ## Skeleton
 
-Shulun's schedule implementation is integrated with the matching baseline `03ef6c4`: see [review scope and checks](docs/schedule_review.md), [schedule work guide](docs/skeleton_schedule_guide.md), [module/API reference](docs/schedule_module.md), and [Omnara connection status](docs/omnara_integration.md). Run it with `python -m uvicorn app.main:app --host 127.0.0.1 --port 8014 --no-access-log`. Full test dependencies are in `requirements.lock`; run `python -m pytest` after installing them. Google, Postgres, authentication and actual invitation/calendar delivery still require the integrations documented there.
-
 Shared app shell and visual system. Feature tracks fill in their own pages. The style catalog is the source of truth for UI.
 
 ```powershell
@@ -414,3 +412,4 @@ Open http://127.0.0.1:8000/style
 - Session and invite, Marc: `/session` and `/invite/demo`, `app/routers/session.py`, `app/templates/session.html`, `app/templates/invite.html`
 
 Shared models are in `app/contracts.py`. Seed data is in `app/store.py` until Postgres is connected. Add UI in `app/static/styles.css` and show it on `/style` before using it on a feature page.
+

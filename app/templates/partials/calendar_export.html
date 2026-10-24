@@ -1,0 +1,28 @@
+<section class="card stack" id="calendar-export-card" aria-label="Organizer calendar export">
+  <h2>Your Google Calendar</h2>
+  <p class="hint">Add this confirmed session to your own primary calendar. This sends no Google invitations.</p>
+  <p id="calendar-export-status" role="status">
+    {% if calendar_export and calendar_export.status == "WAITING_FOR_BOTH_ACCEPTANCES" %}Waiting for both participants to accept.
+    {% else %}Calendar export is disabled in the synthetic demo. A verified session and Google account are required.{% endif %}
+  </p>
+  {% if calendar_export and calendar_export.live %}
+  <script type="application/json" id="calendar-export-data">{{ calendar_export | tojson }}</script>
+  <div class="cluster">
+    <button class="button" type="button" id="calendar-review">Review calendar action</button>
+    <button class="button" type="button" id="calendar-permission" hidden>Authorize calendar writes</button>
+    <a id="calendar-result-link" target="_blank" rel="noopener noreferrer" hidden>View in Google Calendar</a>
+  </div>
+  <div id="calendar-export-dialog" class="calendar-editor-backdrop" hidden>
+  <section class="calendar-editor card stack" role="dialog" aria-modal="true" aria-labelledby="calendar-action-title">
+    <button class="button quiet" type="button" id="calendar-export-close" aria-label="Close calendar preview">Close</button>
+    <h2 id="calendar-action-title">Confirm calendar action</h2>
+    <p id="calendar-action-summary"></p>
+    <p class="hint">Primary calendar only. Removing the event does not cancel the StudyMate invitation.</p>
+    <div class="cluster">
+      <button class="button primary" type="button" id="calendar-add-confirm">Confirm add to my calendar</button>
+      <button class="button" type="button" id="calendar-remove-confirm" hidden>Confirm removal from my calendar</button>
+    </div>
+  </section></div>
+  <script src="/static/calendar-export.js" defer></script>
+  {% endif %}
+</section>

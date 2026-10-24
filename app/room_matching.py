@@ -54,6 +54,10 @@ def _place(room: dict) -> dict | None:
 
 
 def _course_code(course_id: str) -> str:
+    if course_id.startswith("subject:"):
+        from app.routers.session import _course_record  # A subject's label lives with the session's subjects.
+
+        return _course_record(course_id)["code"]
     found = store.course_by_id(course_id)
     return found["code"] if found else course_id
 

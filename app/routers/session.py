@@ -19,14 +19,33 @@ _BROAD_SUBJECT = re.compile(
     re.IGNORECASE,
 )
 _SPECIFIC_COURSE = re.compile(
-    r"\b(?:computer science|cs|math(?:ematics)?|eecs?|stat|ee|physics)\s*\d",
+    r"\b(?:computer science|cs|math(?:ematics)?|eecs?|stats?|ee|physics|data|chem|bio|econ)\s*\d",
     re.IGNORECASE,
 )
+# A subject is a range of courses: words that name it, and course-code prefixes inside it.
 _SUBJECTS = (
-    ("cs", re.compile(r"\b(?:cs|computer science)\b", re.IGNORECASE)),
-    ("math", re.compile(r"\b(?:math|mathematics)\b", re.IGNORECASE)),
+    ("cs", re.compile(r"\b(?:cs|eecs|computer science|programming|coding)\b", re.IGNORECASE), ("cs", "eecs", "compsci")),
+    ("math", re.compile(r"\b(?:math|mathematics|calculus|linear algebra)\b", re.IGNORECASE), ("math",)),
+    ("data", re.compile(r"\b(?:data science|data|stats?|statistics)\b", re.IGNORECASE), ("data", "stat")),
+    ("physics", re.compile(r"\bphysics\b", re.IGNORECASE), ("physics", "phys")),
+    ("chem", re.compile(r"\bchem(?:istry)?\b", re.IGNORECASE), ("chem",)),
+    ("bio", re.compile(r"\bbio(?:logy)?\b", re.IGNORECASE), ("bio", "mcb")),
+    ("econ", re.compile(r"\becon(?:omics)?\b", re.IGNORECASE), ("econ",)),
+    ("writing", re.compile(r"\b(?:writing|english|essays?)\b", re.IGNORECASE), ("english", "writing")),
 )
-_SUBJECT_LABELS = {"cs": "Any CS course", "math": "Any Math course"}
+# No course or subject named means general study: any subject, any room.
+_ANY_SUBJECT = "subject:any"
+_SUBJECT_LABELS = {
+    "cs": "Any CS course",
+    "math": "Any Math course",
+    "data": "Any Data/Statistics course",
+    "physics": "Any Physics course",
+    "chem": "Any Chemistry course",
+    "bio": "Any Biology course",
+    "econ": "Any Economics course",
+    "writing": "Any writing course",
+    "any": "Any subject",
+}
 _DAYS = {
     "sunday": 25,
     "monday": 26,
@@ -97,7 +116,7 @@ def _subject_request(text: str) -> str | None:
     """A department is enough. 'CS 61A' stays one course; 'anything CS' does not."""
     if _SPECIFIC_COURSE.search(text) and not _BROAD_SUBJECT.search(text):
         return None
-    for key, pattern in _SUBJECTS:
+    for key, pattern, _ in _SUBJECTS:
         if pattern.search(text):
             return f"subject:{key}"
     return None
@@ -292,6 +311,12 @@ def _clarify(raw: dict, courses: list[dict], turns: list[dict]) -> tuple[dict | 
     if place:
         raw["place_type"] = place
     named = str(raw.get("course_id") or raw.get("course") or "").strip()
+    if not named:
+        # No course or subject is fine: the student is open to studying anything.
+        raw["course_id"] = named = _ANY_SUBJECT
+        if "course" in question.lower():
+            question = ""
+            raw.pop("question", None)
     user_turns = [turn["text"] for turn in turns if turn.get("role") == "user"]
     latest = user_turns[-1] if user_turns else ""
     starts_at = _clock(str(raw.get("starts_at") or ""))
@@ -305,8 +330,6 @@ def _clarify(raw: dict, courses: list[dict], turns: list[dict]) -> tuple[dict | 
     )
     vague = bool(_VAGUE_TIME.search(latest)) and _local_window(latest) is None and not open_time
     missing_time = starts_at is None or ends_at is None or ends_at <= starts_at or wide or vague
-    if not named:
-        return None, question or "You didn't specify a course. Which course do you want to study?"
     if missing_time:
         return None, question or "You didn't specify a time. What time do you want to meet?"
     try:
@@ -384,15 +407,23 @@ def _session_context(
 
 
 def _family(course_id: str) -> str:
+    """The subject a course belongs to: "CS 61B" is cs, "Data 8" is data, "subject:any" is any."""
     if course_id.startswith("subject:"):
         return course_id.split(":", 1)[1]
     found = store.course_by_id(course_id)
     label = (found["code"] if found else course_id).lower().replace(" ", "")
-    if label.startswith("cs") or course_id.lower().startswith("cs"):
-        return "cs"
-    if label.startswith("math") or course_id.lower().startswith("math"):
-        return "math"
+    for key, _, prefixes in _SUBJECTS:
+        if label.startswith(prefixes) or course_id.lower().startswith(prefixes):
+            return key
+    spoken = _subject_request(course_id)
+    if spoken:
+        return spoken.split(":", 1)[1]
     return label or course_id.lower()
+
+
+def _same_subject(asked: str, room: str) -> bool:
+    """General study fits every room, and a general room welcomes every subject."""
+    return "any" in (asked, room) or asked == room
 
 
 def _place_name(place_type: str, note: str) -> str:
@@ -481,7 +512,7 @@ def eligible_rooms(course_id: str, starts_at: str, ends_at: str, user_id: str, o
     family = _family(course_id)
     rows = []
     for room in store.rooms():
-        if _family(room["course_id"]) != family:
+        if not _same_subject(family, _family(room["course_id"])):
             continue
         room_start, room_end = _clock(room["starts_at"]), _clock(room["ends_at"])
         if room_start is None or room_end is None:

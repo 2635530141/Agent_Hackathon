@@ -20,7 +20,7 @@
       {% for row in free_rows %}<p>{{ row }}</p>{% else %}<p>No eligible free time.</p>{% endfor %}
       <p class="hint">{{ availability.calendar.verification_level }}</p>
     </div>
-    <form method="post" action="/schedule/calendar/refresh"><button class="button quiet" type="submit">Refresh synthetic snapshot</button></form>
+    <form method="post" action="/schedule/calendar/refresh"><input type="hidden" name="day" value="{{ selected_day }}"><button class="button quiet" type="submit">Refresh synthetic snapshot</button></form>
     <p class="hint">Only synthetic data is shown. A real Google connection is not configured.</p>
   </aside>
   <section class="calendar-board" aria-label="Study timetable">

@@ -1,7 +1,7 @@
 """Persistent implementation behind app.schedule_core's compatible public API."""
 from datetime import timedelta
 from uuid import uuid4
-from sqlalchemy import delete, insert
+from sqlalchemy import delete, insert, select
 from app import store
 from app.contracts import BusyInterval, Exam, MatchBusyInterval
 from .core.schemas import Actor, ExamInput, ExceptionInput, Horizon, TrustedMatchContext, WeeklyRuleInput
@@ -60,22 +60,49 @@ def weekly_hours(student_id: str | None = None) -> dict[str, tuple[str, str]]:
 
 
 def save_weekly(hours: dict[str, tuple[str, str]], student_id: str | None = None,
-                timezone_name: str | None = None, overnight: dict | None = None) -> None:
+                timezone_name: str | None = None, overnight: dict | None = None,
+                weekdays: set[int] | None = None) -> None:
+    """Save selected days; untouched rules retain their identity, zone and bounds."""
     student_id = student_id or owner_id()
-    validated = []
+    selected = set(range(7)) if weekdays is None else set(weekdays)
+    if any(type(day) is not int or day not in range(7) for day in selected):
+        raise ValueError("Choose a valid weekday.")
+    validated = {}
     for number, day in enumerate(DAYS):
+        if number not in selected:
+            continue
         start, end = hours.get(day, ("", ""))
         if bool(start) != bool(end):
             raise ValueError(f"{DAY_LABELS[day]} needs both a start and an end.")
         if start:
-            validated.append(WeeklyRuleInput(weekday=number, start_local=start, end_local=end,
-                timezone=timezone_name or display_zone(), ends_next_day=bool((overnight or {}).get(day))))
+            validated[number] = WeeklyRuleInput(weekday=number, start_local=start, end_local=end,
+                timezone=timezone_name or display_zone(), ends_next_day=bool((overnight or {}).get(day)))
     repository = get_runtime().repository
     with repository.engine.begin() as connection:
-        connection.execute(delete(records).where(records.c.owner_id == student_id, records.c.kind == "weekly-rules"))
-        for rule in validated:
-            connection.execute(insert(records).values(id=uuid4().hex, owner_id=student_id,
-                kind="weekly-rules", payload=rule.model_dump(mode="json")))
+        rows = connection.execute(select(records).where(records.c.owner_id == student_id,
+            records.c.kind == "weekly-rules").order_by(records.c.id)).mappings().all()
+        existing = {}
+        for row in rows:
+            rule = repository._record(row)
+            existing.setdefault(rule.weekday, []).append(rule)
+        for day in sorted(selected):
+            prior, rule = existing.get(day, []), validated.get(day)
+            # A bulk form resubmits unchanged days in their original wall times.
+            # Merely changing the display zone must not reinterpret those rules.
+            if weekdays is None and rule and len(prior) == 1 and (
+                prior[0].start_local, prior[0].end_local, prior[0].ends_next_day
+            ) == (rule.start_local, rule.end_local, rule.ends_next_day):
+                continue
+            if prior:
+                connection.execute(delete(records).where(records.c.owner_id == student_id,
+                    records.c.kind == "weekly-rules", records.c.id.in_([r.id for r in prior])))
+            if rule:
+                payload = rule.model_dump(mode="json")
+                if len(prior) == 1:
+                    payload.update(valid_from=prior[0].model_dump(mode="json")["valid_from"],
+                                   valid_until=prior[0].model_dump(mode="json")["valid_until"])
+                connection.execute(insert(records).values(id=prior[0].id if prior else uuid4().hex,
+                    owner_id=student_id, kind="weekly-rules", payload=payload))
         repository._bump(connection, student_id)
 
 

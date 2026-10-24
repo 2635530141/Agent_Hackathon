@@ -108,7 +108,7 @@ def test_no_alternative_renders_without_crashing():
         response = client.get("/session",params={"ready":"1","starts_at":"2026-10-26T16:00","ends_at":"2026-10-26T17:00","study_anyway":"1"})
         assert response.status_code == 200
         assert "No feasible alternative" in response.text
-        assert 'href="/session?' not in response.text.split("You're busy then.")[1].split("</aside>")[0]
+        assert "Try " not in response.text.split("overlaps this time.")[1].split("</p>")[0]
 
 
 def test_free_exception_not_busy_priority_never_grants_hours():
@@ -233,7 +233,7 @@ def test_latest_session_interpretation_hands_time_to_calendar_with_mock_only(mon
     with demo_client() as client:
         response = client.post("/session/interpret",data={"sentence":"Synthetic request"})
         assert response.status_code == 200
-        assert "You're busy then." in response.text
+        assert "Exam overlaps this time." in response.text
         assert "EXAM_BUSY" in schedule_core.own_conflict("2026-10-26T16:00","2026-10-26T17:00",True)["codes"]
-        assert 'value="Synthetic request"' not in response.text  # Sentence stays in the textarea.
-        assert "Synthetic request</textarea>" in response.text
+        assert 'name="sentence" value="Synthetic request"' in response.text  # New room forms retain the conversation.
+        assert "<p>Synthetic request</p>" in response.text

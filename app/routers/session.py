@@ -10,7 +10,7 @@ from app.format import clock, pretty_range
 from app.omnara_client import OmnaraError, interpret_request
 from app.profile_core import PLACE_LABELS, public_profile
 from app.web import render
-from app.scheduling.session_hooks import refresh_before_request, export_card
+from app.scheduling.session_hooks import refresh_before_request, export_card, check_room_time
 
 router = APIRouter()
 _VAGUE_TIME = re.compile(r"\bany\s*time\b|\bwhenever\b|\bany day\b|from \w+day to \w+day", re.IGNORECASE)
@@ -780,7 +780,15 @@ def open_room(
     room_starts, room_ends = chosen if chosen else (starts_at, ends_at)
     place_name = _place_name(place_type, note)
     host = _member(request)
-    already = store.hosted_room(host["id"], course["id"], place_name, room_starts, room_ends) is not None
+    existing = store.hosted_room(host["id"], course["id"], place_name, room_starts, room_ends)
+    try:
+        check_room_time(request, [p["id"] for p in existing["members"]] if existing else [],
+                        existing["starts_at"] if existing else room_starts,
+                        existing["ends_at"] if existing else room_ends)
+    except ValueError as exc:
+        return _redirect_session(course["id"], starts_at, ends_at, place_type, note, study_anyway,
+                                 sentence=sentence, error=str(exc))
+    already = existing is not None
     left_another = store.holds_other_seat(host["id"], room_starts, room_ends, course["id"], place_name)
     room = store.create_room(
         host,
@@ -840,6 +848,13 @@ def change_room_time(
             error="Choose a day and a start time that is earlier than the end time.",
         )
     user = request.session.get("user") or {}
+    room = next((item for item in store.rooms() if item["id"] == room_id), None)
+    if room and room["host_id"] == user.get("id"):
+        try:
+            check_room_time(request, [p["id"] for p in room["members"]], chosen[0], chosen[1])
+        except ValueError as exc:
+            return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway,
+                                     sentence=sentence, open_room=room_id, error=str(exc))
     result = store.update_room_time(room_id, user.get("id", ""), chosen[0], chosen[1])
     notice = {
         "updated": "Time updated.",
@@ -881,6 +896,15 @@ def join_room(
     study_anyway: str = Form("0"),
     sentence: str = Form(""),
 ):
+    room = next((item for item in store.rooms() if item["id"] == room_id), None)
+    if room:
+        try:
+            check_room_time(request, [p["id"] for p in room["members"]], room["starts_at"], room["ends_at"])
+        except ValueError as exc:
+            if not starts_at:
+                return _schedule_redirect(room_id, str(exc), True)
+            return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway,
+                                     sentence=sentence, open_room=room_id, error=str(exc))
     result = store.join_room(room_id, _member(request))
     notice = _ROOM_NOTICES.get(result, "That room is no longer open.")
     if not starts_at:

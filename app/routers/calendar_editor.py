@@ -61,12 +61,8 @@ def apply_entry(body):
             day = schedule_core.DAYS[a.weekday()]
             if body.id is not None and body.id != str(a.weekday()):
                 raise ValueError("weekly edit must keep its weekday")
-            hours = schedule_core.weekly_hours()
-            hours[day] = (a.strftime("%H:%M"),b.strftime("%H:%M"))
-            rules = get_runtime().repository.list_records(owner_id(),"weekly-rules")
-            overnight = {schedule_core.DAYS[r.weekday]:r.ends_next_day for r in rules}
-            overnight[day] = b.date()!=a.date()
-            schedule_core.save_weekly(hours,overnight=overnight)
+            schedule_core.save_weekly({day:(a.strftime("%H:%M"),b.strftime("%H:%M"))},
+                overnight={day:b.date()!=a.date()}, weekdays={a.weekday()})
         elif body.kind=="exam":
             if body.id:
                 schedule_core.update_exam(body.id,body.course_id,body.starts_at,body.ends_at,body.priority_starts_at or None)
@@ -91,10 +87,8 @@ def remove_entry(kind, record_id):
     if kind=="weekly":
         if record_id not in {str(n) for n in range(7)}:
             raise HTTPException(422,"INVALID_WEEKDAY")
-        hours = schedule_core.weekly_hours()
-        hours[schedule_core.DAYS[int(record_id)]] = ("","")
-        rules = get_runtime().repository.list_records(owner_id(),"weekly-rules")
-        schedule_core.save_weekly(hours,overnight={schedule_core.DAYS[r.weekday]:r.ends_next_day for r in rules})
+        schedule_core.save_weekly({schedule_core.DAYS[int(record_id)]:("","")},
+            weekdays={int(record_id)})
     else:
         if kind=="exam": schedule_core.remove_exam(record_id)
         else: schedule_core.remove_exception(record_id)

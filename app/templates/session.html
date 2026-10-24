@@ -5,6 +5,7 @@
 <div class="stack-lg">
   <div class="stack">
     <h1 class="title">New session</h1>
+    <p><a href="/agent">Try the agent: clarify requirements, inspect tool evidence, and replan after a conflict.</a></p>
     <p class="lede">Write the session in a sentence. Omnara turns it into a course, a time, and a place. Matching finds the students. You approve the invite here. Each invited student accepts on their own link.</p>
   </div>
   {% if error %}
@@ -18,6 +19,15 @@
     <label class="field">
       <span class="label">What do you want to study?</span>
       <textarea name="sentence" placeholder="I want to study CS 61A on Thursday evening, not a library." required>{{ sentence }}</textarea>
+    </label>
+    <label class="field">
+      <span class="label">How do you want to study this time? (optional)</span>
+      <select name="session_style">
+        <option value="" {% if not session_style %}selected{% endif %}>Use my profile default</option>
+        {% for style in session_styles %}
+        <option value="{{ style }}" {% if session_style == style %}selected{% endif %}>{{ style }}</option>
+        {% endfor %}
+      </select>
     </label>
     <div class="cluster">
       <button class="button primary" type="submit">Find a study mate</button>
@@ -37,6 +47,10 @@
     {% with interactive=true %}
       {% include "partials/conflict.html" %}
     {% endwith %}
+  {% endif %}
+
+  {% if manual_pick %}
+    {% include "partials/manual_pick.html" %}
   {% endif %}
 
   {% if proposal %}

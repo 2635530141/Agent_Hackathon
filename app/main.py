@@ -5,6 +5,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.routers import matching, pages, profile, schedule, session
 from app.routers import calendar_google
+from app.routers import agent
 from app.routers import calendar_exports
 from app.routers import calendar_editor
 from app.web import BASE
@@ -19,7 +20,8 @@ def create_app(*, calendar_host=None):
         app.state.google_calendar_integration = calendar_host.active
     app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
     for router in (pages.router, profile.router, schedule.router, matching.router, session.router,
-                   calendar_google.router, calendar_exports.router, calendar_editor.router, calendar_editor.form_router):
+                   calendar_google.router, agent.router, calendar_exports.router, calendar_editor.router,
+                   calendar_editor.form_router):
         app.include_router(router)
 
     @app.middleware("http")

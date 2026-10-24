@@ -610,3 +610,8 @@ textarea {
     font-size: 32px;
   }
 }
+/* Agent evidence: also demonstrated on /style. */
+.agent-trace { padding-left: 1.5rem; }
+.agent-trace li { padding: .45rem 0; border-bottom: 1px solid var(--line); }
+.agent-copy { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.agent-live { border-left: 3px solid var(--accent); padding-left: 1rem; }

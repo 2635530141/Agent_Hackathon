@@ -1,0 +1,18 @@
+{
+  "id": "T4",
+  "title": "The note overrides the form: the form says quiet focus, the note asks to talk it through",
+  "requester": {},
+  "people": [
+    {"id": "u_quinn", "name": "Quinn Lee", "study_style": "quiet"},
+    {"id": "u_tara", "name": "Tara Diaz", "study_style": "talk"}
+  ],
+  "request": {"place_type": "library", "session_style": "quiet focus", "note": "actually I want to talk it through, not a library"},
+  "recorded_output": {
+    "no_match": false, "chosen_ids": ["u_tara"],
+    "slot": {"starts_at": "2026-10-27T19:00-07:00", "ends_at": "2026-10-27T21:00-07:00"},
+    "reason": "Your note asks to talk it through, which overrides quiet focus on the form, so Tara, who studies by talking problems through, fits best.",
+    "ranking": [{"id": "u_tara", "why": "talks problems through, as the note asks"}, {"id": "u_quinn", "why": "quiet focus, which the note overrides"}],
+    "runner_ups": ["u_quinn"], "near_tie": false, "flags": [], "alternative": null
+  },
+  "expect": {"chosen": ["u_tara"], "reason_mentions": ["note"], "place_kind": "coffee"}
+}

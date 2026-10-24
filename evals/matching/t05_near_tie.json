@@ -1,0 +1,18 @@
+{
+  "id": "T5",
+  "title": "Near tie: two students with the same course, style, major, year, and time",
+  "requester": {},
+  "people": [
+    {"id": "u_jordan", "name": "Jordan Lee"},
+    {"id": "u_priya", "name": "Priya Natarajan"}
+  ],
+  "request": {},
+  "recorded_output": {
+    "no_match": false, "chosen_ids": ["u_jordan"],
+    "slot": {"starts_at": "2026-10-27T19:00-07:00", "ends_at": "2026-10-27T21:00-07:00"},
+    "reason": "Jordan and Priya fit equally well: same course, style, major, and year, both free 7-9 PM. Jordan is first; swap to see Priya.",
+    "ranking": [{"id": "u_jordan", "why": "same course, style, major, year"}, {"id": "u_priya", "why": "same course, style, major, year"}],
+    "runner_ups": ["u_priya"], "near_tie": true, "flags": [], "alternative": null
+  },
+  "expect": {"near_tie": true, "runner_up_set": true, "chosen_one_of": ["u_jordan", "u_priya"]}
+}

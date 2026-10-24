@@ -1,0 +1,24 @@
+<section class="card stack">
+  <h2>Pick a study mate</h2>
+  <p class="hint">Everyone here is free with you in this window. Choose one; the card is drafted around your pick.</p>
+  <ul class="busy-list">
+    {% for row in manual_pick %}
+    <li class="busy-row">
+      <span><strong>{{ row.first_name }}</strong> · {{ row.major }} · year {{ row.year }}{% if row.shared_courses %} · {{ row.shared_courses | join(", ") }}{% endif %}</span>
+      <span class="meta">{{ row.slot }}{% if row.why %} · {{ row.why }}{% endif %}</span>
+      <form method="post" action="/session/pick">
+        <input type="hidden" name="course_id" value="{{ course.id }}">
+        <input type="hidden" name="starts_at" value="{{ starts_at }}">
+        <input type="hidden" name="ends_at" value="{{ ends_at }}">
+        <input type="hidden" name="place_type" value="{{ place_type }}">
+        <input type="hidden" name="note" value="{{ note }}">
+        <input type="hidden" name="study_anyway" value="{{ '1' if study_anyway else '0' }}">
+        <input type="hidden" name="sentence" value="{{ sentence }}">
+        <input type="hidden" name="session_style" value="{{ session_style }}">
+        <input type="hidden" name="student_id" value="{{ row.id }}">
+        <button class="button quiet" type="submit">Pick</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+</section>

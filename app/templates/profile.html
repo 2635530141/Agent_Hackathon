@@ -141,6 +141,15 @@
         </label>
         <p class="hint">Students under 18 are not matched.</p>
       </fieldset>
+
+      <fieldset class="stack">
+        <legend class="section-title">Age</legend>
+        <label class="choice">
+          <input type="checkbox" name="under_18" value="1" {% if profile.under_18 %}checked{% endif %}>
+          I am under 18
+        </label>
+        <p class="hint">Students under 18 are not matched.</p>
+      </fieldset>
       <div class="cluster">
         <button class="button primary" type="submit">Save profile</button>
       </div>

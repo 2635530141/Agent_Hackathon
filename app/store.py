@@ -244,6 +244,8 @@ _calendar_written = False
 _calendar_connected = False
 _draft = {"key": "", "texts": []}
 _swap_key = ""
+_advice: dict[str, dict] = {}
+_picks: dict[str, str] = {}
 _seq = 20
 
 
@@ -378,6 +380,28 @@ def invite_text() -> str:
 def set_invite_text(text: str) -> None:
     global _invite
     _invite = text.strip()
+
+
+def cached_advice(key: str) -> dict | None:
+    """The model's validated matching answer for this request, so swaps and Send reuse it."""
+    return deepcopy(_advice.get(key))
+
+
+def cache_advice(key: str, output: dict) -> None:
+    _advice[key] = deepcopy(output)
+
+
+def clear_advice(key: str) -> None:
+    _advice.pop(key, None)
+    _picks.pop(key, None)
+
+
+def manual_pick(key: str) -> str | None:
+    return _picks.get(key)
+
+
+def set_manual_pick(key: str, student_id: str) -> None:
+    _picks[key] = student_id
 
 
 def generated_drafts(key: str) -> list[str]:

@@ -5,7 +5,7 @@ from urllib.parse import quote, urlencode
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
-from app import matching_core, schedule_core, store
+from app import matching_core, room_matching, schedule_core, store
 from app.format import clock, pretty_range
 from app.omnara_client import OmnaraError, interpret_request
 from app.profile_core import PLACE_LABELS, public_profile
@@ -505,15 +505,25 @@ def rooms_you_can_join(
 
 
 def _schedule_view(
-    request: Request, open_room: str = "", course_id: str | None = None, starts_at: str = "", ends_at: str = ""
+    request: Request,
+    open_room: str = "",
+    course_id: str | None = None,
+    starts_at: str = "",
+    ends_at: str = "",
+    place_type: str = "",
+    note: str = "",
 ) -> dict:
     user = request.session.get("user") or {}
     user_id = user.get("id", "")
     rooms = rooms_you_can_join(user_id, course_id, starts_at, ends_at)
+    ranking = room_matching.RoomRanking()
+    if course_id and starts_at and ends_at and place_type:
+        ranking = room_matching.rank(rooms, user_id, course_id, starts_at, ends_at, place_type, note)
+        rooms = room_matching.apply(rooms, ranking)
     selected = opened_room(open_room, user_id) if open_room else None
     if selected and selected["id"] not in {room["id"] for room in rooms}:
         selected = None
-    return {"rooms": rooms, "selected": selected}
+    return {"rooms": rooms, "selected": selected, "ranking": ranking}
 
 
 def _form_only(
@@ -596,7 +606,7 @@ def session_page(
         store.resize_hosted(
             user.get("id", ""), context["course"]["id"], context["new_place"], starts_at, ends_at, spoken
         )
-    context.update(_schedule_view(request, open, context["course"]["id"], starts_at, ends_at))
+    context.update(_schedule_view(request, open, context["course"]["id"], starts_at, ends_at, place_type, note))
     if discarded == "1":
         context["proposal"] = None
         context["conflict"] = None

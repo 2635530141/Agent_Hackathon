@@ -500,6 +500,18 @@ _rooms = [
 ]
 
 
+_room_rankings: dict[str, dict] = {}
+
+
+def cached_ranking(key: str) -> dict | None:
+    """The model's room order for one request and set of open rooms."""
+    return deepcopy(_room_rankings.get(key))
+
+
+def cache_ranking(key: str, ranking: dict) -> None:
+    _room_rankings[key] = deepcopy(ranking)
+
+
 def rooms() -> list[dict]:
     return deepcopy(_rooms)
 

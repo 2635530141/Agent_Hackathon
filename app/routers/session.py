@@ -640,8 +640,7 @@ def _schedule_view(
         anytime = _is_anytime_span(starts_at, ends_at)
         for room in rooms:
             room["fits"] = room_matching.reasons(
-                room, asked, _course_record(course_id)["code"],
-                None if anytime else pretty_range(starts_at, ends_at),
+                room, asked, _course_record(course_id)["code"], None if anytime else (starts_at, ends_at),
             )
     selected = opened_room(open_room, user_id) if open_room else None
     if selected and selected["id"] not in {room["id"] for room in rooms}:

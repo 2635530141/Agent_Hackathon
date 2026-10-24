@@ -13,6 +13,15 @@ from app.scheduling.runtime import get_runtime
 THU = ("2026-10-29T18:00", "2026-10-29T21:00")
 
 
+# Marc's seed opens rooms all week; these tests pin the three hand-made rooms they describe.
+BASE_ROOMS = ("room_doe_thu", "room_yali_thu", "room_doe_wed")
+
+
+@pytest.fixture(autouse=True)
+def demo_rooms(monkeypatch):
+    monkeypatch.setattr(store, "_rooms", [room for room in store.rooms() if room["id"] in BASE_ROOMS])
+
+
 @pytest.fixture(autouse=True)
 def fresh_calendar():
     get_runtime().service.refresh_calendar(Actor(subject_id=store.OWNER_ID), FIXTURE_HORIZON)
@@ -78,7 +87,6 @@ def test_a_subject_sees_only_its_rooms():
 
 
 def test_a_general_room_welcomes_any_subject(monkeypatch):
-    monkeypatch.setattr(store, "_rooms", store.rooms())  # This test adds a room; keep it out of other tests.
     host = {"id": "u_jordan", "first_name": "Jordan", "major": "EECS", "year": 3}
     store.create_room(host, "subject:any", "Any subject", "2026-10-29T19:00", "2026-10-29T21:00", "library", "Doe Library", 3)
     general = [room["id"] for room in store.rooms() if room["course_id"] == "subject:any"]

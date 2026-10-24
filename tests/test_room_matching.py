@@ -22,6 +22,15 @@ from app.scheduling.runtime import get_runtime
 THU = ("cs61a", "2026-10-29T18:00", "2026-10-29T21:00")
 
 
+# Marc's seed opens rooms all week; these tests pin the three hand-made rooms they describe.
+BASE_ROOMS = ("room_doe_thu", "room_yali_thu", "room_doe_wed")
+
+
+@pytest.fixture(autouse=True)
+def demo_rooms(monkeypatch):
+    monkeypatch.setattr(store, "_rooms", [room for room in store.rooms() if room["id"] in BASE_ROOMS])
+
+
 class ScriptedModel:
     def __init__(self, *outputs):
         self.outputs = list(outputs)
@@ -199,8 +208,8 @@ def test_said_place_is_a_hard_boundary_and_each_room_says_why(model):
                                            "place_type": "library", "sentence": "CS 61A thursday 6 to 9 in the lib"}).text
     titles = re.findall(r"<h3>([^<]+)</h3>", page)
     assert "Yali&#39;s Cafe" not in titles and titles[0] == "Doe Library"
-    for line in ("Fits your time: 7:00 PM–9:00 PM, inside Thu 29 Oct, 6:00 PM–9:00 PM.",
-                 "Any CS course covers CS 61A.", "Doe Library is a library, as you asked.", "2 seats open."):
+    for line in ("Fits your time: 7:00 PM–9:00 PM is inside your 6:00 PM–9:00 PM.",
+                 "Any CS course includes CS 61A.", "Doe Library is a library, as you asked.", "2 seats open."):
         assert line in page.replace("&#39;", "'")
 
 

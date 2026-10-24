@@ -234,7 +234,7 @@ def save_timezone(timezone: str = Form(...)):
 @router.post("/schedule/check")
 def check_own_time(request: Request, starts_at: str = Form(...), ends_at: str = Form(...)):
     try:
-        result = schedule_core.own_conflict(starts_at,ends_at,False)
+        result = schedule_core.own_conflict(starts_at,ends_at,False,within_window=False)
     except ValueError:
         return _page(request,error="Choose a valid interval and resolve any DST ambiguity.")
     return _page(request,conflict_result=result or {"message":"No blocking conflict in the checked calendar/manual schedule."})

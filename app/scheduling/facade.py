@@ -169,7 +169,32 @@ def matching_free_time(student_id, start, end):
     return [(i.start, i.end) for i in snapshot.available]
 
 
-def own_conflict(starts_at: str, ends_at: str, study_anyway: bool) -> dict | None:
+def _free_inside(requested, blocks):
+    """The longest free part of the requested window, at least an hour (or all of a shorter
+    window). Never another day or time outside what was asked for."""
+    pieces = [(requested.start, requested.end)]
+    for block in sorted(blocks, key=lambda item: item.start):
+        kept = []
+        for start, end in pieces:
+            if block.end <= start or block.start >= end:
+                kept.append((start, end))
+                continue
+            if start < block.start:
+                kept.append((start, block.start))
+            if block.end < end:
+                kept.append((block.end, end))
+        pieces = kept
+    needed = min(timedelta(hours=1), requested.end - requested.start)
+    pieces = [piece for piece in pieces if piece[1] - piece[0] >= needed]
+    if not pieces:
+        return None
+    start, end = max(pieces, key=lambda piece: piece[1] - piece[0])
+    return slot(start, end)
+
+
+def own_conflict(starts_at: str, ends_at: str, study_anyway: bool, within_window: bool = True) -> dict | None:
+    """The organizer's own conflict. For a study session (within_window) the requested
+    window is a hard boundary; the schedule page's check tool keeps the next free slot."""
     requested = slot(starts_at, ends_at)  # Validate before considering any override.
     search_end = requested.start + timedelta(days=14)
     if live_context():
@@ -180,12 +205,17 @@ def own_conflict(starts_at: str, ends_at: str, study_anyway: bool) -> dict | Non
     result = get_runtime().service.check_slot(Actor(subject_id=owner_id()), requested, search)
     if not result.blocked:
         return None
-    titles = [c.owner_only_private_title for c in result.conflicts if c.owner_only_private_title]
+    # Asking for a session time counts as choosing to study then, so usual study hours
+    # do not block it; exams, events, and busy blocks do.
+    hard = [c for c in result.conflicts if not within_window or c.code != "OUTSIDE_STUDY_HOURS"]
+    if not hard:
+        return None
+    titles = [c.owner_only_private_title for c in hard if c.owner_only_private_title]
     names = {"EXAM_BUSY":"Exam", "MANUAL_BUSY":"Unavailable", "OUTSIDE_STUDY_HOURS":"Outside study hours",
              "CONFIRMED_SESSION_BUSY":"Confirmed study session", "CALENDAR_UNKNOWN":"Calendar unknown", "CALENDAR_BUSY":"Calendar busy"}
-    alternative = result.alternative_slot
-    return {"title": "; ".join(titles) or ", ".join(dict.fromkeys(names[c.code] for c in result.conflicts)),
-        "codes": [c.code for c in result.conflicts], "override_eligible": False,
+    alternative = _free_inside(requested, [c.interval for c in hard]) if within_window else result.alternative_slot
+    return {"title": "; ".join(titles) or ", ".join(dict.fromkeys(names[c.code] for c in hard)),
+        "codes": [c.code for c in hard], "override_eligible": False,
         "alternative_start": local_input(alternative.start) if alternative else None,
         "alternative_end": local_input(alternative.end) if alternative else None,
         "no_alternative": alternative is None,

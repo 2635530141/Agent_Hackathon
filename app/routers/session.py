@@ -159,24 +159,33 @@ def _is_anytime_span(starts_at: str, ends_at: str) -> bool:
     return bool(start and end and end - start > timedelta(hours=24))
 
 
+_SPAN_BETWEEN = re.compile(
+    r"\bbetween\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+and\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", re.IGNORECASE
+)
+_SPAN = re.compile(
+    r"\b(?:from\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:to|until|till|-|–)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b",
+    re.IGNORECASE,
+)
+
+
 def _local_window(text: str) -> tuple[str, str] | None:
     day = next((number for name, number in _DAYS.items() if re.search(rf"\b{name}\b", text, re.IGNORECASE)), None)
     if day is None:
         return None
-    span = re.search(
-        r"\b(?:between|from)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+(?:and|to)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
-        text,
-        re.IGNORECASE,
-    )
+    span = _SPAN_BETWEEN.search(text) or _SPAN.search(text)
     point = re.search(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", text, re.IGNORECASE)
     clock = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", text, re.IGNORECASE)
     start = end = None
     if span:
         start = _study_hour(int(span.group(1)), int(span.group(2) or 0), span.group(3) or span.group(6))
         end = _study_hour(int(span.group(4)), int(span.group(5) or 0), span.group(6) or span.group(3))
-    elif point:
+        if start and end and end <= start and not span.group(6) and end[0] + 12 <= 23:
+            end = (end[0] + 12, end[1])  # "7-9" with no am/pm is 7 to 9 in the evening.
+        if not (start and end and end > start):
+            start = end = None
+    if start is None and point:
         start = _study_hour(int(point.group(1)), int(point.group(2) or 0), point.group(3))
-    elif clock:
+    elif start is None and clock:
         start = _study_hour(int(clock.group(1)), int(clock.group(2) or 0), clock.group(3))
     if start and end and (end[0], end[1]) > start:
         begin, finish = start, end
@@ -218,9 +227,9 @@ def _course_from_text(text: str, courses: list[dict]) -> str | None:
 
 
 def _mentioned_place(text: str) -> str:
-    if re.search(r"\b(?:not|no|avoid|never|without)\b(?:\W+\w+){0,3}?\W+librar", text, re.IGNORECASE):
+    if re.search(r"\b(?:not|no|avoid|never|without)\b(?:\W+\w+){0,3}?\W+(?:librar|lib\b)", text, re.IGNORECASE):
         return ""
-    if re.search(r"\bdoe\b|librar", text, re.IGNORECASE):
+    if re.search(r"\bdoe\b|librar|\blib\b", text, re.IGNORECASE):
         return "library"
     if re.search(r"coffeeshop|coffee\s*shop|\b(?:coffee|cafe|café)\b", text, re.IGNORECASE):
         return "coffee"
@@ -457,8 +466,15 @@ def opened_room(room_id: str, user_id: str) -> dict | None:
     return _decorate_room(found, user_id) if found else None
 
 
+def _fits(room_start: datetime, room_end: datetime, start: datetime, end: datetime) -> bool:
+    """The requested window is a hard boundary: the room sits inside it, or shares at least an hour."""
+    inside = start <= room_start and room_end <= end
+    shared = min(room_end, end) - max(room_start, start)
+    return inside or shared >= timedelta(hours=1)
+
+
 def eligible_rooms(course_id: str, starts_at: str, ends_at: str, user_id: str, open_time: bool = False) -> list[dict]:
-    """Rooms for the same subject. A specific time must overlap; any time shows every open room."""
+    """Rooms for the same subject. A specific time must fit (see _fits); any time shows every open room."""
     start, end = _clock(starts_at), _clock(ends_at)
     if start is None or end is None or end <= start:
         return []
@@ -470,7 +486,7 @@ def eligible_rooms(course_id: str, starts_at: str, ends_at: str, user_id: str, o
         room_start, room_end = _clock(room["starts_at"]), _clock(room["ends_at"])
         if room_start is None or room_end is None:
             continue
-        if not open_time and (room_end <= start or room_start >= end):
+        if not open_time and not _fits(room_start, room_end, start, end):
             continue
         rows.append(_decorate_room(room, user_id))
     rows.sort(key=lambda row: (row["full"], row["starts_at"], row["place_name"]))

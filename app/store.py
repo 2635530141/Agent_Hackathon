@@ -92,20 +92,19 @@ def _student(
 #   when Maya sets "I identify as" to woman.
 #   Kai is under 18 and is never eligible.
 _others = [
-    _student("u_jordan", "Jordan Lee", major="EECS", year=3, courses=["cs61a", "math54"]),
-    _student("u_priya", "Priya Natarajan", major="EECS", year=3, courses=["cs61a", "cs61b"]),
+    # Matching seed (Jinan). These six have weekly hours, exams, and busy blocks below.
+    _student("u_jordan", "Jordan Lee", major="EECS", year=3, courses=["cs61a", "math54"], radius=1200),
+    _student("u_sam", "Sam Ortiz", major="Mathematics", year=2, courses=["cs61a", "math54"], style="talk", radius=2000, anchor="home", lat=37.8665, lng=-122.2600, street="2425 Durant Ave", places=["coffee", "outdoor"]),
+    _student("u_priya", "Priya Nair", major="EECS", year=3, courses=["cs61a"], places=["library"]),
+    _student("u_leo", "Leo Park", major="Data Science", year=1, courses=["cs61a"], style="drill", radius=1000, anchor="home", lat=37.8044, lng=-122.2712, street="500 Grand Ave, Oakland", places=["coffee"]),
+    _student("u_ana", "Ana Silva", major="Mathematics", year=3, courses=["math54"], radius=2000, places=["library", "outdoor"], gender_self="woman"),
+    _student("u_ken", "Ken Ito", major="Physics", year=2, courses=["math54"], style="drill", anchor="home", lat=37.8770, lng=-122.2690, street="1800 Euclid Ave", group_size=3, places=["coffee"], gender_self="man"),
+    # Profile edge cases (Stephen). No hours seeded yet, so matching finds no free time for them.
     _student("u_jordanli", "Jordan Li", major="Cognitive Science", year=2, courses=["cs61a"], style="talk", places=["coffee"]),
-    _student("u_sam", "Sam Rivera", major="Mathematics", year=2, courses=["math54"], style="drill", places=["library"], gender_self="nonbinary"),
     _student("u_aisha", "Aisha Bello", major="EECS", year=3, courses=["cs61a", "math54"], gender_self="woman", gender_preference="woman"),
-    _student("u_ben", "Ben Okafor", major="Data Science", year=1, courses=["cs61a", "data8"], style="talk", group_size=3, places=["coffee", "outdoor"], gender_self="man"),
     _student("u_lena", "Lena Fischer", major="Statistics", year=2, courses=["data8", "math54"], style="drill", group_size=4, places=["library", "outdoor"], gender_self="woman"),
     _student("u_marcus", "Marcus Hall", major="Economics", year=1, courses=["data8"], style="talk", group_size=4, places=["coffee"], gender_self="man"),
     _student("u_omar", "Omar Haddad", major="EECS", year=4, courses=["cs61b", "math54"], street="39100 Paseo Padre Pkwy, Fremont", radius=2000),
-    _student("u_chloe", "Chloe Martin", major="Physics", year=2, courses=["math54"], style="drill", places=["library"], anchor="home", lat=37.8678, lng=-122.2600, street="2425 Durant Ave", radius=1000, gender_self="woman"),
-    _student("u_diego", "Diego Alvarez", major="EECS", year=2, courses=["cs61a", "cs61b"], style="talk", group_size=3, places=["coffee", "library"], anchor="home", lat=37.8760, lng=-122.2604, street="1800 Euclid Ave", radius=2500, gender_self="man"),
-    _student("u_hana", "Hana Sato", major="Mathematics", year=3, courses=["math54", "cs61b"], places=["library", "outdoor"], gender_self="woman", gender_preference="woman"),
-    _student("u_tyler", "Tyler Brooks", major="Business", year=4, courses=["cs61a"], style="drill", places=["coffee"], anchor="home", lat=37.8105, lng=-122.2593, street="500 Grand Ave, Oakland", radius=3000, gender_self="man"),
-    _student("u_nina", "Nina Petrova", major="EECS", year=3, courses=["cs61a", "math54"], style="talk", group_size=3, places=["coffee", "library", "outdoor"], gender_self="woman"),
     _student("u_kai", "Kai Wong", major="Undeclared", year=1, courses=["cs61a", "math54"], under_18=True),
 ]
 
@@ -117,6 +116,10 @@ _places = [
         "hours": "Open until 9:00 PM",
         "rating": "4.4",
         "map_url": "https://maps.google.com/?q=Yali%27s+Cafe+Berkeley",
+        "lat": 37.8735,
+        "lng": -122.2662,
+        "opens": "07:00",
+        "closes": "21:00",
     },
     {
         "name": "Doe Library",
@@ -125,6 +128,10 @@ _places = [
         "hours": "Open until 10:00 PM",
         "rating": "4.6",
         "map_url": "https://maps.google.com/?q=Doe+Library+Berkeley",
+        "lat": 37.8722,
+        "lng": -122.2593,
+        "opens": "08:00",
+        "closes": "22:00",
     },
     {
         "name": "Faculty Glade",
@@ -133,6 +140,10 @@ _places = [
         "hours": "Daylight hours",
         "rating": "4.7",
         "map_url": "https://maps.google.com/?q=Faculty+Glade+Berkeley",
+        "lat": 37.8714,
+        "lng": -122.2560,
+        "opens": "07:00",
+        "closes": "18:00",
     },
 ]
 
@@ -181,19 +192,48 @@ _busy = [
 ]
 
 _exceptions: list[dict] = []
+
+_student_weekly = {
+    "u_jordan": {"tue": ("18:00", "22:00"), "wed": ("19:00", "21:00"), "thu": ("18:00", "21:00")},
+    "u_sam": {"tue": ("17:00", "21:00"), "wed": ("16:00", "20:00"), "thu": ("19:00", "22:00")},
+    "u_priya": {"tue": ("19:00", "21:00"), "thu": ("17:00", "21:00")},
+    "u_leo": {"tue": ("18:00", "21:00"), "thu": ("18:00", "21:00")},
+    "u_ana": {"mon": ("17:00", "20:00"), "wed": ("17:00", "21:00"), "thu": ("16:00", "20:00")},
+    "u_ken": {"tue": ("18:00", "21:00"), "wed": ("18:00", "21:00")},
+}
+
+_student_exams = {
+    "u_sam": [
+        {"id": "exam_sam", "course_id": "math54", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "priority": True}
+    ],
+    "u_ana": [
+        {"id": "exam_ana", "course_id": "math54", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "priority": True}
+    ],
+}
+
+_student_busy = {
+    "u_jordan": [
+        {"id": "cal_j1", "source": "calendar", "starts_at": "2026-10-27T18:00", "ends_at": "2026-10-27T19:00", "title": "Lab section"},
+    ],
+    "u_sam": [
+        {"id": "exam_sam", "source": "exam", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "title": "Math 54 exam"},
+    ],
+    "u_priya": [
+        {"id": "cal_p1", "source": "calendar", "starts_at": "2026-10-29T19:00", "ends_at": "2026-10-29T21:00", "title": "Work shift"},
+    ],
+    "u_ana": [
+        {"id": "exam_ana", "source": "exam", "starts_at": "2026-11-06T09:00", "ends_at": "2026-11-06T12:00", "title": "Math 54 exam"},
+    ],
+}
 _person_index = 0
 _place_index = 0
 _invite = "Want to work through CS 61A problem sets at Yali's Cafe on Thursday at 7?"
-_invitation = {
-    "id": "demo",
-    "status": "draft",
-    "calendar_written": False,
-    "course_id": "cs61a",
-    "starts_at": "2026-10-29T19:00",
-    "ends_at": "2026-10-29T21:00",
-    "place_name": "Yali's Cafe",
-}
+_invitations: dict[str, dict] = {}
+_latest_batch_ids: list[str] = []
+_calendar_written = False
 _calendar_connected = False
+_draft = {"key": "", "texts": []}
+_swap_key = ""
 _seq = 20
 
 
@@ -248,6 +288,16 @@ def place_index() -> int:
     return _place_index
 
 
+def swaps_for(key: str) -> tuple[int, int]:
+    """Person and place swap counts, reset when the request changes."""
+    global _swap_key, _person_index, _place_index
+    if key != _swap_key:
+        _swap_key = key
+        _person_index = 0
+        _place_index = 0
+    return _person_index, _place_index
+
+
 def cycle_person() -> None:
     global _person_index
     _person_index = (_person_index + 1) % len(_others)
@@ -258,7 +308,9 @@ def cycle_place() -> None:
     _place_index = (_place_index + 1) % len(_places)
 
 
-def weekly() -> dict[str, tuple[str, str]]:
+def weekly(student_id: str = OWNER_ID) -> dict[str, tuple[str, str]]:
+    if student_id != OWNER_ID:
+        return deepcopy(_student_weekly.get(student_id, {}))
     return deepcopy(_weekly)
 
 
@@ -267,7 +319,9 @@ def replace_weekly(hours: dict[str, tuple[str, str]]) -> None:
     _weekly.update(hours)
 
 
-def exams() -> list[dict]:
+def exams(student_id: str = OWNER_ID) -> list[dict]:
+    if student_id != OWNER_ID:
+        return deepcopy(_student_exams.get(student_id, []))
     return deepcopy(_exams)
 
 
@@ -281,7 +335,9 @@ def delete_exam(exam_id: str) -> None:
     _busy[:] = [block for block in _busy if block["id"] != exam_id]
 
 
-def busy() -> list[dict]:
+def busy(student_id: str = OWNER_ID) -> list[dict]:
+    if student_id != OWNER_ID:
+        return deepcopy(_student_busy.get(student_id, []))
     return deepcopy(_busy)
 
 
@@ -308,25 +364,67 @@ def set_invite_text(text: str) -> None:
     _invite = text.strip()
 
 
-def invitation() -> dict:
-    return deepcopy(_invitation)
+def generated_drafts(key: str) -> list[str]:
+    """Invites matching generated for this request, so an untouched draft can be regenerated."""
+    return list(_draft["texts"]) if _draft["key"] == key else []
 
 
-def set_invitation_status(status: str) -> None:
-    _invitation["status"] = status
-    if status != "accepted":
-        _invitation["calendar_written"] = False
+def remember_draft(key: str, text: str) -> None:
+    if _draft["key"] != key:
+        _draft["key"] = key
+        _draft["texts"] = []
+    _draft["texts"].append(text)
 
 
-def set_invitation_details(course_id: str, starts_at: str, ends_at: str, place_name: str) -> None:
-    _invitation["course_id"] = course_id
-    _invitation["starts_at"] = starts_at
-    _invitation["ends_at"] = ends_at
-    _invitation["place_name"] = place_name
+def create_invitations(records: list[dict]) -> list[dict]:
+    """Freeze one pending invite per person. Later edits do not change these rows."""
+    global _calendar_written
+    created = []
+    ids = []
+    for record in records:
+        item = {"id": next_id("inv"), "status": "pending", **record}
+        _invitations[item["id"]] = item
+        ids.append(item["id"])
+        created.append(deepcopy(item))
+    _latest_batch_ids[:] = ids
+    _calendar_written = False
+    return created
 
 
-def write_calendar_event() -> None:
-    _invitation["calendar_written"] = True
+def latest_invitations() -> list[dict]:
+    return [deepcopy(_invitations[item_id]) for item_id in _latest_batch_ids]
+
+
+def invitation_by_id(invitation_id: str) -> dict | None:
+    item = _invitations.get(invitation_id)
+    return deepcopy(item) if item else None
+
+
+def set_person_status(invitation_id: str, status: str) -> None:
+    item = _invitations.get(invitation_id)
+    if item and item["status"] == "pending" and status in ("accepted", "declined"):
+        item["status"] = status
+
+
+def batch_all_accepted() -> bool:
+    items = latest_invitations()
+    return bool(items) and all(item["status"] == "accepted" for item in items)
+
+
+def declined_names() -> list[str]:
+    return [item["first_name"] for item in latest_invitations() if item["status"] == "declined"]
+
+
+def calendar_event_written() -> bool:
+    return _calendar_written
+
+
+def write_calendar_event() -> bool:
+    global _calendar_written
+    if not batch_all_accepted():
+        return False
+    _calendar_written = True
+    return True
 
 
 def calendar_connected() -> bool:

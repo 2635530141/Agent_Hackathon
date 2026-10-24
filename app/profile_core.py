@@ -4,18 +4,12 @@ PublicProfile is the only profile object matching may read.
 Street address, email, and gender stay in PrivateProfile.
 """
 
-import os
 import re
-from pathlib import Path
 
-import httpx
-
+from app import places
 from app.contracts import PrivateProfile, PublicProfile
 from app.store import CAMPUS_LAT, CAMPUS_LNG, add_course, courses, course_by_id, others, owner, replace_owner, student_by_id
 
-GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
-# Bias Google results toward the campus area so "2425 Durant Ave" means Berkeley.
-GEOCODE_BOUNDS = "37.80,-122.33|37.93,-122.18"
 MAX_COURSES = 8
 STYLE_NOTE_LIMIT = 200
 PLACE_NOTE_LIMIT = 100
@@ -41,8 +35,8 @@ PLACE_LABELS = {
 }
 GENDER_LABELS = {"male": "Male", "female": "Female", "other": "Others"}
 
-# Fallback when no Google Maps key is set, so the demo and tests run offline.
-# Keys are lowercase street prefixes, matched against the start of the address.
+# Offline fallback (tests, or STUDYMATE_OFFLINE=1). Online, real addresses go to
+# Google Maps or OpenStreetMap through app.places.
 _KNOWN_ADDRESSES = {
     "2100 channing way": (37.8668, -122.2650),
     "2425 durant ave": (37.8678, -122.2600),
@@ -57,64 +51,34 @@ _KNOWN_ADDRESSES = {
 }
 
 
-def _maps_key() -> str:
-    if os.environ.get("GOOGLE_MAPS_API_KEY"):
-        return os.environ["GOOGLE_MAPS_API_KEY"]
-    dotenv = Path(__file__).resolve().parent.parent / ".env"
-    if dotenv.exists():
-        for line in dotenv.read_text().splitlines():
-            name, _, value = line.partition("=")
-            if name.strip() == "GOOGLE_MAPS_API_KEY":
-                return value.strip().strip('"').strip("'")
-    return ""
-
-
 def maps_connected() -> bool:
-    return bool(_maps_key())
+    return bool(places.maps_key())
 
 
 def maps_url(lat: float, lng: float) -> str:
-    return f"https://www.google.com/maps/search/?api=1&query={lat},{lng}"
-
-
-def _google_geocode(address: str, key: str) -> tuple[float, float] | None:
-    try:
-        response = httpx.get(
-            GEOCODE_URL,
-            params={"address": address, "key": key, "region": "us", "bounds": GEOCODE_BOUNDS},
-            timeout=5,
-        )
-        data = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        raise ValueError("Google Maps could not be reached. Try again or center on campus.") from exc
-    status = data.get("status")
-    if status == "ZERO_RESULTS":
-        return None
-    if status != "OK":
-        raise ValueError(f"Google Maps could not look up the address ({status}). Try again or center on campus.")
-    location = data["results"][0]["geometry"]["location"]
-    return location["lat"], location["lng"]
+    return places.maps_url(lat, lng)
 
 
 def geocode(address: str) -> tuple[float, float] | None:
-    """Google Geocoding when GOOGLE_MAPS_API_KEY is set, otherwise the fallback table."""
-    key = _maps_key()
-    if key:
-        return _google_geocode(address, key)
-    normalized = " ".join(address.lower().replace(",", " ").split())
-    for prefix, point in _KNOWN_ADDRESSES.items():
-        if normalized.startswith(prefix):
-            return point
-    return None
+    """Google Maps with a key, otherwise OpenStreetMap. Offline, the fallback table."""
+    if places.offline():
+        normalized = " ".join(address.lower().replace(",", " ").split())
+        return next((point for prefix, point in _KNOWN_ADDRESSES.items() if normalized.startswith(prefix)), None)
+    try:
+        return places.geocode(address)
+    except places.PlacesError as exc:
+        raise ValueError(str(exc)) from exc
 
 
-def _locate(street_address: str) -> tuple[float, float]:
+def _locate(street_address: str, current: dict) -> tuple[float, float]:
     """Radius center: the address the student gave. The address never leaves this module."""
     if not street_address:
         raise ValueError("Add an address. Your travel radius is centered on it.")
+    if street_address == current["street_address"] and current.get("anchor_lat") is not None:
+        return current["anchor_lat"], current["anchor_lng"]  # Unchanged address: no new lookup.
     point = geocode(street_address)
     if point is None:
-        raise ValueError("Google Maps could not find that address. Check the street and city.")
+        raise ValueError(f"{places.source()} could not find that address. Check the street and add the city.")
     return point
 
 
@@ -341,7 +305,7 @@ def update_profile(data: dict) -> PrivateProfile:
         raise ValueError("Major is required.")
 
     street_address = str(data.get("street_address", current["street_address"])).strip()
-    anchor_lat, anchor_lng = _locate(street_address)
+    anchor_lat, anchor_lng = _locate(street_address, current)
 
     updated = {
         **current,

@@ -19,6 +19,16 @@ def isolated_calendar(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def offline_places(monkeypatch):
+    """No live Google Maps, OpenStreetMap, or Omnara place picker in tests."""
+    from app import places
+    monkeypatch.setenv("STUDYMATE_OFFLINE", "1")
+    places.clear_cache()
+    yield
+    places.clear_cache()
+
+
+@pytest.fixture(autouse=True)
 def no_live_room_ranking(monkeypatch):
     """Rendering /session ranks rooms with the model; no test may reach Omnara."""
     from app import advise, room_matching

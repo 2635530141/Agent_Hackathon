@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 from app import matching_core, room_matching, schedule_core, store
 from app.format import clock, pretty_range
 from app.omnara_client import OmnaraError, interpret_request
+from app import places as live_places
 from app.profile_core import PLACE_LABELS, public_profile
 from app.web import render
 from app.scheduling.session_hooks import refresh_before_request, export_card, check_room_time
@@ -384,7 +385,7 @@ def _session_context(
         and (start.hour, start.minute, end.hour, end.minute) == (9, 0, 21, 0)
     ):
         asked_when = f"{start:%a} {start.day} {start:%b}, any time"
-    return {
+    context = {
         "course": course,
         "courses": store.courses(),
         "starts_at": starts_at,
@@ -426,6 +427,8 @@ def _session_context(
         "group_size": _spoken_group_size(sentence) or public_profile().group_size,
         "new_place": _place_name(place_type, note),
     }
+    context["new_place_details"] = place_details(context["new_place"])
+    return context
 
 
 def _family(course_id: str) -> str:
@@ -465,6 +468,11 @@ def _place_name(place_type: str, note: str) -> str:
     for place in store.places():
         if place["name"].lower() in folded:
             return place["name"]
+    # The best-documented real place of that kind around the host (Google Maps or OpenStreetMap).
+    host = public_profile()
+    found = live_places.best(place_type, host.anchor_lat, host.anchor_lng, host.radius_meters)
+    if found:
+        return found["name"]
     for place in store.places():
         if place["kind"] == place_type:
             return place["name"]
@@ -493,6 +501,15 @@ _WEEK = (
 )
 
 
+def place_details(name: str) -> dict:
+    """Address and Google Maps link for a room's place, so people can check it exists."""
+    found = live_places.known(name) or next(
+        ({"address": place["address"], "map_url": place["map_url"]} for place in store.places() if place["name"] == name),
+        None,
+    )
+    return found or {"address": "", "map_url": ""}
+
+
 def _decorate_room(room: dict, user_id: str) -> dict:
     start, end = _clock(room["starts_at"]), _clock(room["ends_at"])
     taken = len(room["members"])
@@ -509,6 +526,7 @@ def _decorate_room(room: dict, user_id: str) -> dict:
         "full": taken >= room["capacity"],
         "joined": any(person["id"] == user_id for person in room["members"]),
         "day": start.day if start else 0,
+        "place": place_details(room["place_name"]),
     }
 
 
@@ -938,6 +956,22 @@ def open_room(
     )
 
 
+PLACES_PER_KIND = 3
+
+
+def _place_options() -> list[dict]:
+    """Places a host can pick: the best-documented real places of each kind nearby, then the demo places."""
+    host = public_profile()
+    options: dict[str, dict] = {}
+    for kind in PLACE_LABELS:
+        found = live_places.nearby(kind, host.anchor_lat, host.anchor_lng, host.radius_meters)
+        for place in sorted(found, key=lambda item: -item.get("quality", 0))[:PLACES_PER_KIND]:
+            options.setdefault(place["name"], place)
+    for place in store.places():
+        options.setdefault(place["name"], place)
+    return list(options.values())
+
+
 def _room_choices() -> dict:
     """What a host can pick in Room settings: subjects or their courses, and the known places."""
     owned = _profile_courses() or store.courses()
@@ -945,7 +979,7 @@ def _room_choices() -> dict:
     return {
         "subject_choices": [*subjects[-1:], *subjects[:-1], *({"id": c["id"], "label": c["code"]} for c in owned)],
         "place_choices": [{"name": place["name"], "kind": place["kind"], "label": f"{place['name']} ({PLACE_LABELS[place['kind']]})"}
-                          for place in store.places()],
+                          for place in _place_options()],
     }
 
 
@@ -978,7 +1012,7 @@ def change_room_settings(
 ):
     keep = dict(sentence=sentence, open_room=room_id)
     chosen = _picked_time(room_day, room_start, room_end)
-    place = next((item for item in store.places() if item["name"] == room_place), None)
+    place = next((item for item in _place_options() if item["name"] == room_place), None)
     try:
         capacity = int(room_capacity)
     except ValueError:

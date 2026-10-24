@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 
+from app import place_agent, places as live_places
 from app.contracts import Exam, MatchBusyInterval, Proposal, ProposalPerson, ProposalPlace, PublicProfile, StudyRequest
 from app.format import pretty_range
 from app.profile_core import PLACE_LABELS, STYLE_LABELS, eligible_student_ids, public_profile, public_profile_of
@@ -488,6 +489,23 @@ def _is_open(place: dict, start: datetime, end: datetime) -> bool:
     return time.fromisoformat(place["opens"]) <= start.time() and end.time() <= time.fromisoformat(place["closes"])
 
 
+def _search_area(people: list[PublicProfile]) -> tuple[float, float, int]:
+    """Middle of the group, and a search radius about the size of the smallest travel radius."""
+    lat = sum(p.anchor_lat for p in people) / len(people)
+    lng = sum(p.anchor_lng for p in people) / len(people)
+    return lat, lng, min(p.radius_meters for p in people) + 300
+
+
+def _real_places(kinds: list[str], people: list[PublicProfile]) -> list[dict]:
+    """Real places from Google Maps or OpenStreetMap. Empty when offline or unreachable."""
+    lat, lng, radius = _search_area(people)
+    found: dict[str, dict] = {}
+    for kind in kinds:
+        for place in live_places.nearby(kind, lat, lng, radius):
+            found.setdefault(place["id"], place)
+    return list(found.values())
+
+
 def suggest_places(
     place_type: str,
     people: list[PublicProfile],
@@ -496,18 +514,30 @@ def suggest_places(
     avoid: set[str] | None = None,
     preferred: list[str] | None = None,
 ) -> list[dict]:
-    """Stub for Google Places: the seeded list, ranked on type, radius, hours, and rating."""
+    """Real places near the group, ranked on type, radius, hours, and rating.
+
+    The seeded list is used only when the live lookup returns nothing (offline or unreachable).
+    """
     avoid = avoid or set()
     preferred = preferred or []
+    kinds = [kind for kind in dict.fromkeys([place_type, *preferred]) if kind in PLACE_LABELS and kind not in avoid]
+    local_start, local_end = start.astimezone(ZoneInfo(display_zone())), end.astimezone(ZoneInfo(display_zone()))
     rows = []
-    for place in places():
+    for place in _real_places(kinds, people) or places():
         trips = [_meters(p.anchor_lat, p.anchor_lng, place["lat"], place["lng"]) for p in people]
         inside = all(trip <= p.radius_meters for trip, p in zip(trips, people))
+        if "periods" in place:
+            opened = live_places.open_during(place, local_start, local_end)
+            hours = live_places.hours_on(place, local_start)
+        else:
+            opened, hours = _is_open(place, start, end), place["hours"]
         rows.append(
             {
                 **place,
+                "hours": hours,
                 "inside": inside,
-                "open": _is_open(place, start, end),
+                "open": opened is not False,
+                "hours_known": opened is not None,
                 "walk_minutes": math.ceil(max(trips) / WALK_METERS_PER_MINUTE),
             }
         )
@@ -517,8 +547,10 @@ def suggest_places(
             not row["inside"],
             not row["open"],
             row["kind"] != place_type,
+            not row["hours_known"],
+            -row.get("quality", 3),
             row["kind"] not in preferred,
-            -float(row["rating"]),
+            -float(row["rating"] or 0),
             row["walk_minutes"],
         )
     )
@@ -575,8 +607,9 @@ def _reason(
         lines.append(line + ".")
     hours = place["hours"][:1].lower() + place["hours"][1:]
     minutes = place["walk_minutes"]
+    rating = f", rating {place['rating']}" if place["rating"] else ""
     lines.append(
-        f"{place['name']} is {PLACE_NOUNS[place['kind']]}, {hours}, rating {place['rating']}, "
+        f"{place['name']} is {PLACE_NOUNS[place['kind']]}, {hours}{rating}, "
         f"within {minutes} minute{'' if minutes == 1 else 's'} of {'all' if plural else 'both'} of you."
     )
     if place["kind"] != request.place_type:
@@ -585,6 +618,8 @@ def _reason(
         lines.append("Nothing fits inside every travel radius, so this is the nearest option.")
     if not place["open"]:
         lines.append("Nothing on the list is open for the whole session. Check the hours.")
+    elif not place.get("hours_known", True):
+        lines.append("Its hours are not listed, so check before you go.")
     others = [cand for cand in ranked if cand not in group]
     if others and not later and group[0] is ranked[0] and group[0].score - others[0].score <= NEAR_TIE:
         lines.append(_tiebreak(group[0], others[0]))
@@ -659,6 +694,15 @@ def match(request: StudyRequest, inputs: Inputs | None = None, swap_person: int 
 
     profiles = [me.profile] + [cand.person.profile for cand in group]
     options = suggest_places(request.place_type, profiles, window[0], window[1], note.avoid, me.profile.place_types)
+    if not swap_place:
+        liked = sorted({PLACE_LABELS[kind] for profile in profiles for kind in profile.place_types})
+        mentioned = [profile.place_note for profile in profiles if profile.place_note]
+        when = pretty_range(_iso(window[0]), _iso(window[1]))
+        pick = place_agent.choose(options, request.place_type, request.note, when, liked, mentioned)
+        if pick:
+            index, why = pick
+            options = [options[index]] + options[:index] + options[index + 1 :]
+            notes.append(f"Why this place: {why}")
     place = options[swap_place % len(options)]
 
     proposal = Proposal(

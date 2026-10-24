@@ -47,11 +47,8 @@
         <label class="field">
           <span class="label">Address</span>
           <input name="street_address" value="{{ profile.street_address }}" autocomplete="street-address" required>
-          <span class="hint">Your travel radius is centered on this address, located with Google Maps. A match never receives it.</span>
+          <span class="hint">Your travel radius is centered on this address, located with {{ "Google Maps" if maps_connected else "OpenStreetMap" }}. Include the city. A match never receives it.</span>
         </label>
-        {% if not maps_connected %}
-        <p class="hint">Google Maps is not connected yet, so only a few demo addresses can be found. Add GOOGLE_MAPS_API_KEY to .env to look up any address.</p>
-        {% endif %}
         <label class="field">
           <span class="label">Travel radius in meters</span>
           <input name="radius_meters" type="number" min="200" max="20000" value="{{ profile.radius_meters }}">

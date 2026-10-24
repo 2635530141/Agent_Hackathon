@@ -183,7 +183,7 @@ def test_form_timezone_preserves_instant_and_rejects_dst_ambiguity():
 def test_demo_google_connection_never_toggles_live():
     with demo_client() as client:
         response = client.post("/schedule/calendar")
-        assert response.status_code == 200 and "fixed demo identity cannot connect" in response.text
+        assert response.status_code == 404
     assert schedule_core.calendar_status()["connected"] is False
 
 
@@ -217,14 +217,14 @@ def test_team_login_gate_and_other_demo_account_cannot_read_owner_private_view(m
         assert client.get("/schedule").status_code == 403
         assert client.get("/api/schedule/busy").status_code == 403
         # A demo login does not establish a trusted Google actor.
-        assert client.get("/calendar/google/connect").status_code == 409
+        assert client.get("/calendar/google/connect").status_code == 404
 
 
 def test_synthetic_refresh_updates_owner_and_candidate_pool():
     runtime = get_runtime()
     runtime.repository.begin_refresh("u_jordan")
     with demo_client() as client:
-        assert client.post("/schedule/calendar/refresh").status_code == 200
+        assert client.post("/schedule/recalculate").status_code == 200
     assert runtime.repository.read_bundle("u_jordan")["state"]["connection_status"] == "synced"
 
 

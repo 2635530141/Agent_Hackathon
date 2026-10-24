@@ -1,3 +1,13 @@
+# Archived Google Calendar prototype
+
+Retired from the normal StudyMate application on 2026-10-24 at the owner's request.
+The connection card, setup page and normal-app OAuth/sync/export routes are removed.
+Use the manual Schedule timetable; no Google client JSON or API key is needed.
+The isolated adapters and tests below are historical compatibility code, not an enabled
+main-app feature. Previously saved private credentials and calendars are not deleted.
+
+---
+
 # Google Calendar user connection
 
 The Schedule page now exposes Google connection setup in the normal synthetic

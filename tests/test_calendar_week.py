@@ -103,9 +103,8 @@ def test_synthetic_refresh_retains_selected_day_and_rejects_non_date_redirect():
     with TestClient(app) as client:
         login(client)
         page = client.get("/schedule?day=2026-10-27")
-        assert 'name="day" value="2026-10-27"' in page.text
-        response = client.post("/schedule/calendar/refresh",data={"day":"2026-10-27"},follow_redirects=False)
+        response = client.post("/schedule/recalculate",data={"day":"2026-10-27"},follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/schedule?day=2026-10-27&saved=synthetic-refresh"
-        invalid = client.post("/schedule/calendar/refresh",data={"day":"https://evil.example"},follow_redirects=False)
+        invalid = client.post("/schedule/recalculate",data={"day":"https://evil.example"},follow_redirects=False)
         assert invalid.headers["location"] == "/schedule?saved=synthetic-refresh"

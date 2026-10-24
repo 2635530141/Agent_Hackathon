@@ -4,8 +4,6 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.routers import matching, pages, profile, schedule, session
-from app.routers import calendar_google
-from app.routers import calendar_exports
 from app.routers import calendar_editor
 from app.web import BASE
 
@@ -19,8 +17,15 @@ def create_app(*, calendar_host=None):
         app.state.google_calendar_integration = calendar_host.active
     app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
     for router in (pages.router, profile.router, schedule.router, matching.router, session.router,
-                   calendar_google.router, calendar_exports.router, calendar_editor.router, calendar_editor.form_router):
+                   calendar_editor.router, calendar_editor.form_router):
         app.include_router(router)
+
+    # Retired from the normal application. Explicit isolated legacy hosts only.
+    if calendar_host:
+        from app.routers import calendar_google, calendar_exports
+        app.include_router(calendar_google.router)
+        app.include_router(calendar_exports.router)
+        app.include_router(schedule.legacy_google_router)
 
     @app.middleware("http")
     async def require_login(request, call_next):

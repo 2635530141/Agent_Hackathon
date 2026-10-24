@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Schedule module local state and credentials
+schedule-demo.db*
+.local/
+.env.*
+!.env.example

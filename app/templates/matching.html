@@ -40,7 +40,7 @@
     </label>
     <label class="choice">
       <input type="checkbox" name="study_anyway" value="1" {% if form.study_anyway %}checked{% endif %}>
-      Study anyway (ignore my own busy time)
+      Study anyway (ignore only my own calendar events)
     </label>
     <div class="cluster">
       <button class="button primary" type="submit">Run matching</button>
@@ -64,7 +64,7 @@
         <dt>Courses</dt><dd>{{ profile.course_ids | join(", ") }}</dd>
         <dt>Eligible ids</dt><dd>{{ eligible_ids | join(", ") }}</dd>
       </dl>
-      <h2>Busy, without titles</h2>
+      <h2>Schedule, without titles</h2>
       <ul class="busy-list">
         {% for block in busy_rows %}
         <li class="busy-row">

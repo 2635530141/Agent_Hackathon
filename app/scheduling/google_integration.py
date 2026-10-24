@@ -16,7 +16,7 @@ class GoogleCalendarIntegration:
 
     def complete(self, actor, code, state):
         with self.oauth.owner_lock(actor.subject_id):
-            self.oauth.complete(actor,code,state,after_save=lambda conn:
+            return self.oauth.complete(actor,code,state,after_save=lambda conn:
                 self.repository.mark_connected(actor.subject_id,connection=conn))
 
     def refresh(self, actor):
@@ -42,7 +42,11 @@ class GoogleCalendarIntegration:
                 self.vault.load(subject_id)
             except GoogleStateError as exc:
                 if str(exc)=="GOOGLE_NOT_CONNECTED":
-                    return subject_id,"manual_only"
+                    state = self.repository.read_bundle(subject_id)["state"]
+                    if state["connection_status"] in {"not_connected","disconnected"}:
+                        return subject_id,"manual_only"
+                    ticket = self.repository.begin_refresh(subject_id)
+                    self.repository.fail_refresh(subject_id,ticket)
                 return subject_id,"unknown"
             window = google_window(self.oauth.clock(),self.provider.timezone_for_owner(subject_id))
             status = self.service.refresh_calendar(Actor(subject_id=subject_id),window)

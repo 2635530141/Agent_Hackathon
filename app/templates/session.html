@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Session · StudyMate{% endblock %}
+{% block feature_styles %}<link rel="stylesheet" href="/static/calendar.css">{% endblock %}
 {% block content %}
 <div class="stack-lg">
   <div class="stack">
@@ -66,9 +67,10 @@
     {% if declined_names %}
     <div class="callout warn"><p>{{ declined_names | join(", ") }} declined. The session stays off the calendar.</p></div>
     {% else %}
-    <p class="hint">Calendar export is disabled until authoritative session acceptances and a separate organizer approval are integrated.</p>
+    <p class="hint">Adding a calendar event is a separate confirmation below. It never sends another invitation.</p>
     {% endif %}
   </section>
   {% endif %}
+  {% include "partials/calendar_export.html" %}
 </div>
 {% endblock %}

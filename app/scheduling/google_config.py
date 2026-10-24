@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 READ_SCOPE = "https://www.googleapis.com/auth/calendar.events.readonly"
+WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events.owned"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 CALLBACK = "http://127.0.0.1:8011/calendar/google/callback"

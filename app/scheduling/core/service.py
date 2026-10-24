@@ -48,13 +48,14 @@ class ScheduleService:
             last_success_at=last, coverage_start=state["coverage_start"], coverage_end=state["coverage_end"],
             snapshot_version=state["snapshot_version"])
 
-    def _compute(self, subject_id, horizon, bundle):
+    def _compute(self, subject_id, horizon, bundle, exclude_session_id=None):
         weekly, warnings = expand(bundle["weekly-rules"], horizon)
         additions = [Interval(start=e.start, end=e.end) for e in bundle["exceptions"] if e.kind == "available"]
         base = clip(weekly + additions, horizon)
         manual = [Interval(start=e.start, end=e.end) for e in bundle["exceptions"] if e.kind == "unavailable"]
         exams = [Interval(start=e.start, end=e.end) for e in bundle["exams"]]
         reservations = self.sessions.confirmed_reservations(subject_id, horizon)
+        reservations = [r for r in reservations if r.session_id != exclude_session_id]
         free = clip(subtract(base, manual + exams + bundle["busy"] + reservations), horizon)
         priority = []
         for exam in bundle["exams"]:
@@ -106,10 +107,11 @@ class ScheduleService:
             exams=bundle["exams"], private_calendar_events=[e for e in self.repository.private_events(subject_id)
                 if overlaps(e, horizon)], confirmed_reservations=reservations, availability=snapshot)
 
-    def _check(self, subject_id, slot, horizon):
+    def _check(self, subject_id, slot, horizon, exclude_session_id=None, exclude_calendar_ids=frozenset()):
         SlotCheck(slot=slot, horizon=horizon)
         bundle = self.repository.read_bundle(subject_id)
-        snapshot, base, manual, reservations = self._compute(subject_id, horizon, bundle)
+        bundle["busy"] = [b for b in bundle["busy"] if b.id not in exclude_calendar_ids]
+        snapshot, base, manual, reservations = self._compute(subject_id, horizon, bundle, exclude_session_id)
         conflicts = []
         for code, items in [("EXAM_BUSY", bundle["exams"]), ("MANUAL_BUSY", manual),
                             ("CALENDAR_BUSY", bundle["busy"]), ("CONFIRMED_SESSION_BUSY", reservations)]:

@@ -1,0 +1,78 @@
+<div class="calendar-workspace">
+  <aside class="calendar-sidebar stack">
+    <button class="button primary calendar-create" type="button" id="calendar-create">＋ Create time</button>
+    <label class="field"><span class="label">Go to date</span><input id="calendar-jump" type="date" value="{{ selected_day }}"></label>
+    <div class="stack">
+      <h2 class="section-title">Your week</h2>
+      <p class="hint">Click a time, or drag down a day to select a range. Click a saved block to edit it.</p>
+      <div class="calendar-legend">
+        <label><input type="checkbox" data-layer="weekly" checked><i class="swatch weekly"></i> Study hours</label>
+        <label><input type="checkbox" data-layer="available" checked><i class="swatch available"></i> Effective free time</label>
+        <label><input type="checkbox" data-layer="exam" checked><i class="swatch exam"></i> Exams</label>
+        <label><input type="checkbox" data-layer="calendar" checked><i class="swatch calendar"></i> Calendar busy</label>
+        <label><input type="checkbox" data-layer="free" checked><i class="swatch free"></i> Extra study time</label>
+        <label><input type="checkbox" data-layer="busy" checked><i class="swatch busy"></i> Unavailable</label>
+        <label><input type="checkbox" data-layer="session" checked><i class="swatch session"></i> Confirmed sessions</label>
+      </div>
+    </div>
+    <div class="calendar-free-summary">
+      <h3>Free on {{ selected_day }}</h3>
+      {% for row in free_rows %}<p>{{ row }}</p>{% else %}<p>No eligible free time.</p>{% endfor %}
+      <p class="hint">{{ availability.calendar.verification_level }}</p>
+    </div>
+    <form method="post" action="/schedule/calendar/refresh"><button class="button quiet" type="submit">Refresh synthetic snapshot</button></form>
+    <p class="hint">Only synthetic data is shown. A real Google connection is not configured.</p>
+  </aside>
+  <section class="calendar-board" aria-label="Study timetable">
+    <div class="calendar-toolbar">
+      <div class="cluster">
+        <a class="button quiet" href="/schedule?day={{ calendar_week.previous }}" aria-label="Previous week">‹</a>
+        <a class="button quiet" href="/schedule?day={{ today }}">Today</a>
+        <a class="button quiet" href="/schedule?day={{ calendar_week.next }}" aria-label="Next week">›</a>
+      </div>
+      <h2>{{ calendar_week.label }}</h2>
+      <label><span class="sr-only">Calendar view</span><select id="calendar-view"><option value="week">Week</option><option value="day">Day</option></select></label>
+    </div>
+    <p class="calendar-zone">{{ timezone }} · 30-minute selection · exams always block</p>
+    <div class="calendar-scroller" id="calendar-scroller" tabindex="0" aria-label="Scrollable timetable">
+      <div class="calendar-grid" id="calendar-grid">
+        <div class="calendar-corner">Time</div>
+        {% for day in calendar_week.days %}
+        <button type="button" class="calendar-day-heading {% if day.selected %}selected{% endif %}" data-day="{{ loop.index0 }}" aria-label="View {{ day.date }}">
+          <span>{{ day.weekday }}</span><strong>{{ day.number }}</strong>{% if day.dst %}<small>DST change</small>{% endif %}
+        </button>
+        {% endfor %}
+        <div class="calendar-hours">{% for hour in range(24) %}<span style="top:{{ hour * 60 }}px">{{ "%02d"|format(hour) }}:00</span>{% endfor %}</div>
+        {% for day in calendar_week.days %}
+        <div class="calendar-day" data-day="{{ loop.index0 }}" data-date="{{ day.date }}" aria-label="{{ day.date }}">
+          {% for half in range(48) %}<button type="button" class="cal-slot" data-half="{{ half }}" style="top:{{ half * 30 }}px" aria-label="Create {{ day.date }} {{ '%02d'|format(half // 2) }}:{{ '30' if half % 2 else '00' }}"></button>{% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <p id="calendar-selection-status" class="calendar-zone" role="status">{% if availability.calendar.verification_level == "unknown" %}Calendar verification is stale or incomplete. Refresh the synthetic snapshot before using free time.{% else %}Your saved hours and hard blocks are shown in your timezone. Effective free time is marked in green.{% endif %}</p>
+    <details class="calendar-zone"><summary>Effective free time · {{ selected_day }}</summary>
+    {% for row in free_rows %}<p>{{ row }}</p>{% else %}<p>No eligible free time. Unknown calendar status never means free.</p>{% endfor %}
+    </details>
+  </section>
+</div>
+<script id="calendar-week-data" type="application/json">{{ {"week":calendar_week,"csrf":editor_csrf} | tojson }}</script>
+<div id="calendar-editor" class="calendar-editor-backdrop" hidden>
+<section class="calendar-editor card" role="dialog" aria-modal="true" aria-labelledby="calendar-editor-title">
+  <div class="cluster calendar-dialog-heading"><h2 id="calendar-editor-title">Create time</h2><button class="button quiet" id="calendar-editor-close" type="button" aria-label="Close time editor">×</button></div>
+  <form id="calendar-entry-form" method="post" action="/schedule/timetable" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ editor_csrf }}">
+    <input type="hidden" name="record_id" value="">
+    <input type="hidden" name="entry_kind" value="free">
+    <label class="field"><span class="label">Type</span><select name="kind"><option value="free">Extra study time</option><option value="weekly">Weekly study hours</option><option value="exam">Exam</option><option value="busy">Unavailable</option></select></label>
+    <label class="field" id="calendar-course-field"><span class="label">Course</span><select name="course_id">{% for course in courses %}<option value="{{ course.id }}">{{ course.code }}</option>{% endfor %}</select></label>
+    <label class="field"><span class="label">Starts ({{ timezone }})</span><input type="datetime-local" name="starts_at" required></label>
+    <label class="field"><span class="label">Ends ({{ timezone }})</span><input type="datetime-local" name="ends_at" required></label>
+    <label class="field" id="calendar-priority-field"><span class="label">Priority starts (optional)</span><input type="datetime-local" name="priority_starts_at"></label>
+    <p class="hint" id="calendar-entry-help">Extra study time applies only to these dates. Exams and busy events still block it.</p>
+    <p id="calendar-editor-error" role="alert" hidden></p>
+    <div class="cluster"><button class="button primary" id="calendar-entry-save" type="submit" name="operation" value="save">Save time</button><button class="button quiet" id="calendar-entry-remove" type="button" hidden>Remove this time</button></div>
+    <div id="calendar-delete-confirmation" hidden><p>Remove this saved time? This does not delete any Google event.</p><button class="button" type="submit" name="operation" value="delete" id="calendar-entry-remove-confirm">Confirm remove</button></div>
+  </form>
+</section></div>
+<noscript><p class="callout warn">Use the detailed editors below to manage your schedule without JavaScript.</p></noscript>

@@ -50,9 +50,11 @@ def callback(request: Request, actor=Depends(authenticated_calendar_owner)):
         if not code or request.query_params.get("error"):
             active.vault.consume(actor,state,active.oauth.clock())
             raise GoogleStateError("OAUTH_NOT_COMPLETED")
-        active.complete(actor,code,state)
+        context = active.complete(actor,code,state)
     except GoogleStateError:
         raise HTTPException(400,"OAUTH_NOT_COMPLETED_OR_STATE_INVALID") from None
+    if context and context.get("purpose")=="write":
+        return RedirectResponse("/session?notice=Calendar+permission+updated.+Review+the+current+session+and+confirm+separately.",status_code=303)
     return RedirectResponse("/schedule?saved=google-read-consent",status_code=303)
 
 

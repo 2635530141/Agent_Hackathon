@@ -24,3 +24,21 @@ Draft PR: https://github.com/2635530141/Agent_Hackathon/pull/2 . Verified OPEN, 
 Stephen: verified user/session/CSRF/timezone and real per-user Profile/calendar isolation. David: read saved sanitized availability; no provider calls in Matching. Marc: authoritative reservation/revision/acceptance gateway, refresh at Session start and before Send, version recheck and independent organizer export approval. Proposed override/group-acceptance policies need team agreement. Postgres, real OAuth UI/private reads and all real writes are unverified. See `calendar-integration-handoff.md` and `calendar-google-readonly.md` for exact calls/setup.
 
 Executed seed: `.venv/Scripts/python.exe -m app.scheduling.seed` (existing edits preserved). Running locally: `.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8011 --no-access-log`. Only synthetic data is served. No user terminal work is required.
+
+## M3 and timetable continuation
+
+Rechecked workspace/Git/PR and reran the baseline: 102 passed, two warnings. No real Google authorization or authoritative team Session API exists. The current demo login does not establish real per-user isolation.
+
+Implemented M3: Session read model/adapter, server acceptance/revision/organizer gates, independently approved export/removal, encrypted stable Google-subject binding via incremental owned-events + openid consent, persistent operation/approval tables, UUID-derived stable event ID, leases/CAS, unknown-result reconciliation, etag deletion and durable delete intent. Group exports and conflict overrides remain disabled. The existing interpretation and Send handlers actually invoke the refresh hook; live gateway/identity/resolver wiring remains the team's dependency. Matching still reads saved data only.
+
+Implemented timetable: original design tokens, week/day grid, date navigation, overlap lanes, effective-free markers, click/drag selection, weekly/exam/free/busy editing, explicit manual-record removal, keyboard/Escape/focus handling and native CSRF-protected POST/redirect forms. Original detailed editors remain accessible. No drag-rescheduling of exported Sessions.
+
+Browser verified: created Oct 29 13–14, edited to 13–14:30; dragged Oct 28 10–11:30, changed it to unavailable, saved it, then explicitly removed that test record. Only fictional local test data changed. The Oct 29 extra-free block remains as a local verification example. No Google/model/mail call occurred.
+
+Most recent pre-final check: 138 passed, two known dependency deprecations, 11.03s; node --check for both Calendar scripts passed; pip check passed. A subsequent regression test checks HTTP 202 explicitly returns status=unknown; final suite/publication result is recorded below after execution. See calendar-writeback-handoff.md for calls, migrations, configuration, unresolved policy and live-vs-mock boundaries. calendar-team-message.md is prepared text only; it has not been sent.
+
+Final verified M3 suite: `.venv/Scripts/python.exe -m pytest -q --basetemp=.tmp/m3-final-confirmed` -> **140 passed, 2 warnings, 14.93s**. Both `node --check` commands pass; pip check reports no broken requirements. Added coverage includes HTTP 202 status=unknown and preventing an existing export from moving to a different Google account.
+
+Actual final Uvicorn stop/start retained the Oct 29 13–14:30 manual addition, original weekly hours and exam. Browser refreshed synthetic snapshots and displayed all seven weekday columns with the original StudyMate design, study hours, effective-free markers, lecture and exam. Final screenshot is local/ignored at .tmp/calendar-m3-week.png. Physical touch, real OAuth consent/UI, live Google writes/deletes, Postgres and authoritative team integration remain unverified.
+
+Final pre-push fetch: origin/main still c69e063; origin/shuluun still da61959 and PR #2 still OPEN/Draft. This phase will append its own scoped commit to shuluun and update that same PR, without force push, merge, release or deployment. Publication is confirmed below after the remote operation.

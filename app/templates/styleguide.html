@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Style · StudyMate{% endblock %}
+{% block feature_styles %}<link rel="stylesheet" href="/static/calendar.css">{% endblock %}
 {% block content %}
 <div class="stack-lg">
   <div class="stack">
@@ -195,6 +196,19 @@
         <dt>Street address</dt><dd>Not included</dd>
       </dl>
       <figcaption><code>.facts</code> for the matching debug view</figcaption>
+    </figure>
+  </section>
+  <section class="stack">
+    <h2 class="section-title">Calendar timetable</h2>
+    <figure class="specimen">
+      <div class="calendar-legend">
+        <span><i class="swatch weekly"></i> Study hours</span>
+        <span><i class="swatch available"></i> Effective free time</span>
+        <span><i class="swatch exam"></i> Exam · hard block</span>
+        <span><i class="swatch calendar"></i> Private calendar busy</span>
+      </div>
+      <p><a href="/schedule">Open the interactive week/day timetable</a></p>
+      <figcaption>Calendar-only CSS reuses the existing cream, forest green, serif headings and rounded cards. The timetable has a time gutter, day columns, overlap lanes and keyboard-accessible time controls.</figcaption>
     </figure>
   </section>
 </div>

@@ -1,15 +1,25 @@
 from datetime import timedelta
+from contextlib import contextmanager
 import json
 from zoneinfo import ZoneInfo
 import pytest
 from fastapi.testclient import TestClient
-from app import matching_core, schedule_core, store
+from app import accounts, matching_core, schedule_core, store
 from app.main import app
 from app.scheduling.core.schemas import Actor, ExamInput, ExceptionInput, Horizon, Interval, PrivateEvent
 from app.scheduling.core.service import AuthorizationError
 from app.scheduling.demo import FIXTURE_HORIZON
 from app.scheduling.runtime import build_runtime, get_runtime
 from app.scheduling.time import local_input, parse_instant
+
+
+@contextmanager
+def demo_client():
+    with TestClient(app) as client:
+        response = client.post("/login", data={"email":accounts.TEST_EMAIL,
+            "password":accounts.TEST_PASSWORD}, follow_redirects=False)
+        assert response.status_code == 303
+        yield client
 
 
 def prepare():
@@ -44,7 +54,7 @@ def test_core_acceptance_and_matching_share_repository():
 
 def test_exam_form_edit_updates_page_and_matching():
     runtime, exam = prepare()
-    with TestClient(app) as client:
+    with demo_client() as client:
         response = client.post(f"/schedule/exams/{exam.id}/edit", data={"course_id":"math54",
             "starts_at":"2026-10-26T15:00","ends_at":"2026-10-26T17:30","priority_starts_at":"2026-10-24T00:00"})
         assert response.status_code == 200 and "Saved" in response.text
@@ -94,8 +104,8 @@ def test_half_open_adjacent_and_full_duration_alternative_checks_all_blocks():
 def test_no_alternative_renders_without_crashing():
     prepare()
     schedule_core.save_weekly({})
-    with TestClient(app) as client:
-        response = client.get("/session",params={"starts_at":"2026-10-26T16:00","ends_at":"2026-10-26T17:00","study_anyway":"1"})
+    with demo_client() as client:
+        response = client.get("/session",params={"ready":"1","starts_at":"2026-10-26T16:00","ends_at":"2026-10-26T17:00","study_anyway":"1"})
         assert response.status_code == 200
         assert "No feasible alternative" in response.text
         assert 'href="/session?' not in response.text.split("You're busy then.")[1].split("</aside>")[0]
@@ -124,7 +134,7 @@ def test_matching_privacy_and_no_provider_call(monkeypatch):
 
 def test_owner_endpoint_denies_target_user_and_core_owner_context():
     runtime, _ = prepare()
-    with TestClient(app) as client:
+    with demo_client() as client:
         assert client.get("/api/schedule/busy?user_id=u_jordan").status_code == 403
         assert client.get("/schedule?owner_id=u_jordan").status_code == 403
         assert "SYNTHETIC_OWNER_ONLY" in client.get("/api/schedule/busy").text
@@ -153,7 +163,7 @@ def test_session_gateway_reads_team_confirmed_reservations():
 
 @pytest.mark.parametrize("path", ["/schedule","/session","/matching","/profile","/style","/invite"])
 def test_team_pages_still_render(path):
-    with TestClient(app) as client:
+    with demo_client() as client:
         assert client.get(path).status_code == 200
 
 
@@ -167,7 +177,7 @@ def test_form_timezone_preserves_instant_and_rejects_dst_ambiguity():
 
 
 def test_demo_google_connection_never_toggles_live():
-    with TestClient(app) as client:
+    with demo_client() as client:
         response = client.post("/schedule/calendar")
         assert response.status_code == 200 and "fixed demo identity cannot connect" in response.text
     assert schedule_core.calendar_status()["connected"] is False
@@ -176,14 +186,54 @@ def test_demo_google_connection_never_toggles_live():
 def test_export_disabled_even_after_demo_acceptance():
     invitations = store.create_invitations([{"person_id":"u_jordan","first_name":"Jordan","starts_at":"2026-10-29T19:00","ends_at":"2026-10-29T20:00"}])
     store.set_person_status(invitations[0]["id"],"accepted")
-    with TestClient(app) as client:
+    with demo_client() as client:
         response = client.post("/session/calendar",data={"accepted":"true","approved":"true"})
         assert response.status_code == 200 and "Calendar export is disabled" in response.text
         assert not store.calendar_event_written()
 
 
 def test_invalid_matching_time_and_dst_note_return_safe_message():
-    with TestClient(app) as client:
+    with demo_client() as client:
         for value in ("invalid","2026-11-01T01:30"):
             response = client.get("/api/match",params={"starts_at":value,"ends_at":"2026-11-01T03:00","study_anyway":"1"})
             assert response.status_code == 200 and response.json()["proposal"] is None
+
+
+def test_team_login_gate_and_other_demo_account_cannot_read_owner_private_view(monkeypatch):
+    from copy import deepcopy
+    from secrets import token_hex
+    monkeypatch.setattr(accounts,"_accounts",deepcopy(accounts._accounts))
+    email = token_hex(8)+"@example.invalid"
+    password = token_hex(16)
+    accounts.register("Synthetic Tester",email,password)
+    with TestClient(app) as client:
+        denied = client.get("/schedule",follow_redirects=False)
+        assert denied.status_code == 303 and denied.headers["location"] == "/login"
+        client.post("/login",data={"email":email,"password":password})
+        assert client.get("/schedule").status_code == 403
+        assert client.get("/api/schedule/busy").status_code == 403
+        # A demo login does not establish a trusted Google actor.
+        assert client.get("/calendar/google/connect").status_code == 409
+
+
+def test_synthetic_refresh_updates_owner_and_candidate_pool():
+    runtime = get_runtime()
+    runtime.repository.begin_refresh("u_jordan")
+    with demo_client() as client:
+        assert client.post("/schedule/calendar/refresh").status_code == 200
+    assert runtime.repository.read_bundle("u_jordan")["state"]["connection_status"] == "synced"
+
+
+def test_latest_session_interpretation_hands_time_to_calendar_with_mock_only(monkeypatch):
+    from app.routers import session
+    prepare()
+    monkeypatch.setattr(session,"interpret_request",lambda sentence,courses:{
+        "course_id":"math54","starts_at":"2026-10-26T16:00",
+        "ends_at":"2026-10-26T17:00","place_type":"coffee"})
+    with demo_client() as client:
+        response = client.post("/session/interpret",data={"sentence":"Synthetic request"})
+        assert response.status_code == 200
+        assert "You're busy then." in response.text
+        assert "EXAM_BUSY" in schedule_core.own_conflict("2026-10-26T16:00","2026-10-26T17:00",True)["codes"]
+        assert 'value="Synthetic request"' not in response.text  # Sentence stays in the textarea.
+        assert "Synthetic request</textarea>" in response.text

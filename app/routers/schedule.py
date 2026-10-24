@@ -167,7 +167,11 @@ def edit_exception(exception_id: str, starts_at: str = Form(...), ends_at: str =
 
 @router.post("/schedule/calendar/refresh")
 def refresh_synthetic_calendar():
-    get_runtime().service.refresh_calendar(Actor(subject_id=store.OWNER_ID), FIXTURE_HORIZON)
+    # Refresh the known synthetic pool together so a fresh owner snapshot does
+    # not leave candidate fixtures stale. This never contacts a real provider.
+    runtime = get_runtime()
+    for user_id in [store.OWNER_ID, *(person["id"] for person in store.others())]:
+        runtime.service.refresh_calendar(Actor(subject_id=user_id), FIXTURE_HORIZON)
     return RedirectResponse("/schedule?saved=synthetic-refresh", status_code=303)
 
 

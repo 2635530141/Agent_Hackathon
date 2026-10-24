@@ -1,13 +1,24 @@
-# Calendar integration progress
+# Calendar integration execution record
 
-2026-10-24. Original standalone M0/M1 preserved at the parent workspace. New team checkout starts at `origin/main` commit `03ef6c415acebe03458a02df110aa474161ac190`. Branch: `feat/shulun-calendar-integration`. Authenticated GitHub account has push access; no login action needed.
+2026-10-24. Original standalone M0/M1 stays at the parent workspace, untouched. Team checkout: `team-integration/Agent_Hackathon`. Local implementation branch: `feat/shulun-calendar-integration`; remote destination requested by the user: their existing `shuluun` branch. No main push, PR merge, deployment or real calendar operation.
 
-Verified baselines: original standalone 60 passed (1 dependency deprecation warning); unmodified team 21 passed (same warning). No team AGENTS.md exists at this baseline; inherited calendar scope/safety rules apply. Team auth and Postgres are not implemented; fixed owner and global Profile/Session state remain synthetic only.
+## Checkpoints
 
-M1.5 in progress: vendor the existing core under app/scheduling/core, use schedule_core.py as a compatibility facade, preserve starts_at/ends_at and the team UI. Add one scheduling repository read by owner routes and Matching, explicit local timezone conversion, persistent CRUD, hard blocks and full-duration alternatives. Ordinary organizer overrides stay disabled pending a request/revision authorization gateway. No production identity/session system, scorer rewrite, email provider or deployment.
+- Standalone baseline: **60 passed**, 1 warning. Initial unmodified team main `03ef6c4`: **21 passed**, 1 warning.
+- M1.5 commit `0e1f0e9`: shared persistent scheduling, compatibility facade, forms, sanitized Matching, hard conflicts and full-duration alternatives. **67 passed**, 1 warning. Browser saved weekly hours and edited an exam; actual server restart retained both.
+- M2 commit `22e200d`: Google Web OAuth/provider/vault, atomic read-only sync, refresh coordinator and default-disabled live boundary. **99 passed**, 2 warnings with mocked Google/OAuth HTTP only. No real account connected/read; writes/deletes unavailable.
+- Remote main advanced to `c69e063` (landing/login/Session). A clean detached worktree ran its unchanged suite: **20 passed, 1 failed**, because the API smoke test did not sign in after login was introduced. Merge `d9afb2c` preserves all new team code and Calendar guards. Only that original smoke test adds actual demo login; its assertions and the 20 algorithm tests stay intact.
+- Final integrated suite: `.venv/Scripts/python.exe -m pytest -q --basetemp=.tmp/final-calendar-tests`: **102 passed, 2 warnings, 6.09s**. Starlette/Authlib httpx adapter deprecations remain visible. `.venv/Scripts/python.exe -m pip check`: **No broken requirements found**. Lock includes latest main's itsdangerous.
+- Browser on latest main: demo login works; restart retained Monday 13–18 and the CS61A exam 20–20:30 on Oct 29 with explicit priority. Synthetic refresh yields 16–18, 19–20, 20:30–21. Session 20–20:30 with study_anyway=1 is blocked and offers 20:30–21. No model call was made; automated interpretation uses a mock.
 
-M1.5 complete: 67 passed, 1 upstream deprecation warning (3.49s). Existing 21 team tests unchanged. Browser saved weekly hours, added/edited an exam and verified resulting free intervals; actual Uvicorn stop/start preserved both edits. Matching reads the same repository; cross-user/private-data and disabled-export gates tested. See calendar-integration-handoff.md.
+## Version preservation and publication
 
-Remote shuluun advanced to ee42763 during development. The user clarified to finish this new implementation independently and not import or be influenced by the older version. That branch and commit remain untouched. Version storage/push must preserve its history; never force-push or overwrite the older commit.
+The user requested this new implementation, independent of the older `shuluun` code, then a new version on their branch. Prior version: `ee427638b1e3aa6f6e3c0b4197ba9af826979886`. Preserve it as an ancestor using an intentional history-only merge, retaining the completed main-based v2 file tree. Then use a normal fast-forward push to `shuluun`, never force-push. Old code remains recoverable by commit; new code has separate commits. Latest main `c69e063` also remains an ancestor.
 
-Next: independent M1.5 commit, then M2 read-only OAuth/provider code and mock tests. Fixed demo identity must never connect a real account. Real writes/deletes remain unavailable. Draft PR and final branch publication follow code/secret/regression review.
+Publication follows scoped diff/secret-path and regression checks. Draft PR URL and confirmed remote state are recorded after creation. No PR is merged or deployed.
+
+## Remaining integration gates
+
+Stephen: verified user/session/CSRF/timezone and real per-user Profile/calendar isolation. David: read saved sanitized availability; no provider calls in Matching. Marc: authoritative reservation/revision/acceptance gateway, refresh at Session start and before Send, version recheck and independent organizer export approval. Proposed override/group-acceptance policies need team agreement. Postgres, real OAuth UI/private reads and all real writes are unverified. See `calendar-integration-handoff.md` and `calendar-google-readonly.md` for exact calls/setup.
+
+Executed seed: `.venv/Scripts/python.exe -m app.scheduling.seed` (existing edits preserved). Running locally: `.venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8011 --no-access-log`. Only synthetic data is served. No user terminal work is required.

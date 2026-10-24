@@ -253,6 +253,9 @@ def test_malformed_page_and_repeated_pagination_fail_closed():
 
 def test_default_host_rejects_fake_identity_and_forged_headers():
     with TestClient(team_app) as client:
+        from app import accounts
+        assert client.post("/login",data={"email":accounts.TEST_EMAIL,
+            "password":accounts.TEST_PASSWORD},follow_redirects=False).status_code == 303
         for path in ("connect","callback?code=synthetic&state=synthetic"):
             response = client.get("/calendar/google/"+path,headers={"X-User-ID":store.OWNER_ID,"Authorization":"Bearer synthetic"})
             assert response.status_code==409

@@ -16,7 +16,7 @@ This is the new version continued from M1.5 commit `0e1f0e9`, without importing 
 
 ## Why the current page cannot connect a real account
 
-Team main currently has a fixed fake Profile owner, shared in-memory invitation state and no real login dependency. The `/schedule` host therefore stays synthetic and displays **Google not configured / team identity required**. Its existing connection entry reaches OAuth only after the host injects BOTH verified server identity and an isolated live composition. Neither exists by default. Merely setting credential paths cannot enable it. Forged headers/body IDs and `trusted=true` fail tests.
+Latest team main (`c69e063`) adds a demo login cookie, but Profile/calendar owner and invitation state are still synthetic and not isolated for real accounts. Calendar routes now require login and deny any registered demo account other than the seeded fixture owner; a demo login never becomes a trusted Google actor. The `/schedule` host therefore stays synthetic and displays **Google not configured / team identity required**. Its existing connection entry reaches OAuth only after the host injects BOTH verified server identity and an isolated live composition. Neither exists by default. Merely setting credential paths cannot enable it. Forged headers/body IDs and `trusted=true` fail tests.
 
 `build_google_integration` rejects the seeded demo database before reading credential files. A real binding must use a separate authenticated repository and never the fixed fake owner. No second production identity system has been created: `GoogleActor` is an adapter value supplied by the team's verified session, not a login implementation.
 

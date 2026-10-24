@@ -7,6 +7,10 @@ from .core.schemas import Horizon, Interval
 
 
 def display_zone() -> str:
+    from .context import live_context
+    context = live_context()
+    if context:
+        return context.actor.timezone
     return os.getenv("STUDYMATE_TIMEZONE", "America/Los_Angeles")
 
 

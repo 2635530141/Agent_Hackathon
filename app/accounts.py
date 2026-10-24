@@ -65,3 +65,60 @@ def seed() -> None:
 
 
 seed()
+
+
+class PersistentAccounts:
+    """Persistent backend for the EXISTING login, used only by the private read host.
+
+    This is not campus verification. Production hosts should inject team auth.
+    No demo user/password is copied into this database.
+    """
+    def __init__(self, engine):
+        from sqlalchemy import MetaData, Table, Column, String
+        self.engine = engine
+        metadata = MetaData()
+        self.table = Table("studymate_accounts", metadata,
+            Column("id", String, primary_key=True), Column("email", String, unique=True, nullable=False),
+            Column("name", String, nullable=False), Column("password_hash", String, nullable=False),
+            Column("timezone", String, nullable=False))
+        metadata.create_all(engine)
+
+    def get(self, subject_id):
+        from sqlalchemy import select
+        with self.engine.connect() as connection:
+            row = connection.execute(select(self.table).where(self.table.c.id == subject_id)).mappings().first()
+        return {k:row[k] for k in ("id", "name", "email", "timezone")} if row else None
+
+    def authenticate(self, email, password):
+        from sqlalchemy import select
+        with self.engine.connect() as connection:
+            row = connection.execute(select(self.table).where(self.table.c.email == email.strip().lower())).mappings().first()
+        if not row or not _matches(password, row["password_hash"]):
+            return None
+        return self.get(row["id"])
+
+    def register(self, name, email, password):
+        from secrets import token_hex
+        from uuid import uuid4
+        from sqlalchemy import insert
+        from sqlalchemy.exc import IntegrityError
+        clean_name, clean_email = " ".join(name.split()), email.strip().lower()
+        if not 2 <= len(clean_name) <= 100 or not 3 <= len(clean_email) <= 254 or "@" not in clean_email or "." not in clean_email.split("@")[-1]:
+            raise ValueError("Enter a name and valid email address.")
+        if not 12 <= len(password) <= 1024:
+            raise ValueError("Use a password of at least 12 characters.")
+        subject_id = "user_" + uuid4().hex
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(insert(self.table).values(id=subject_id, email=clean_email, name=clean_name,
+                    password_hash=_hash(password, token_hex(32)), timezone="America/Los_Angeles"))
+        except IntegrityError:
+            raise ValueError("That email already has an account. Sign in instead.") from None
+        return self.get(subject_id)
+
+    def set_timezone(self, subject_id, timezone):
+        from zoneinfo import ZoneInfo
+        from sqlalchemy import update
+        ZoneInfo(timezone)
+        with self.engine.begin() as connection:
+            connection.execute(update(self.table).where(self.table.c.id == subject_id).values(timezone=timezone))

@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Google Calendar setup · StudyMate{% endblock %}
+{% block content %}<section class="card stack"><h1>Connect each user's Google calendar</h1>
+<p>The private preview includes account-specific Connect, Refresh and Disconnect controls, a primary-calendar read of the next 14 local dates, private event titles and the same editable timetable.</p>
+<p>Run the private preview with the team's Web OAuth client file. Credentials stay on the server; ordinary users sign in and consent in Google. The synthetic demo uses separate data.</p>
+<pre>python -m app.calendar_preview --client-file C:/private/google-web-client.json --port 8017</pre>
+<p>Setup and team integration instructions: docs/calendar-google-user-connect.md. This local preview does not enable production Matching, Session, invitations or Google event writes. Those need the team's authenticated adapters and a deployed HTTPS callback.</p>
+<a class="button" href="/schedule">Back to schedule</a></section>{% endblock %}

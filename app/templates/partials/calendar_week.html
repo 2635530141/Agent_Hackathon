@@ -43,12 +43,12 @@
     <input type="hidden" name="csrf_token" value="{{ editor_csrf }}">
     <input type="hidden" name="record_id" value="">
     <input type="hidden" name="entry_kind" value="free">
-    <label class="field"><span class="label">Type</span><select name="kind"><option value="free">Extra study time</option><option value="weekly">Weekly study hours</option><option value="exam">Exam</option><option value="busy">Unavailable</option></select></label>
+    <label class="field"><span class="label">Type</span><select name="kind"><option value="busy">Unavailable</option><option value="exam">Exam</option></select></label>
     <label class="field" id="calendar-course-field"><span class="label">Course</span>{% if private_calendar %}<input name="course_id" placeholder="Course or exam label" maxlength="80">{% else %}<select name="course_id">{% for course in courses %}<option value="{{ course.id }}">{{ course.code }}</option>{% endfor %}</select>{% endif %}</label>
     <label class="field"><span class="label">Starts ({{ timezone }})</span><input type="datetime-local" name="starts_at" required></label>
     <label class="field"><span class="label">Ends ({{ timezone }})</span><input type="datetime-local" name="ends_at" required></label>
     <label class="field" id="calendar-priority-field"><span class="label">Priority starts (optional)</span><input type="datetime-local" name="priority_starts_at"></label>
-    <p class="hint" id="calendar-entry-help">Extra study time applies only to these dates. Exams and busy events still block it.</p>
+    <p class="hint" id="calendar-entry-help">This interval is unavailable. You are free at every other time that is not blocked.</p>
     <p id="calendar-editor-error" role="alert" hidden></p>
     <div class="cluster"><button class="button primary" id="calendar-entry-save" type="submit" name="operation" value="save">Save time</button><button class="button quiet" id="calendar-entry-remove" type="button" hidden>Remove this time</button></div>
     <div id="calendar-delete-confirmation" hidden><p>Remove this saved time?</p><button class="button" type="submit" name="operation" value="delete" id="calendar-entry-remove-confirm">Confirm remove</button></div>

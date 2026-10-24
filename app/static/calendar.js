@@ -30,15 +30,14 @@
     document.getElementById("calendar-entry-help").textContent=kind==="weekly"
       ? "Repeats on this weekday. Saving replaces this weekday’s study hours. Other weekdays stay unchanged."
       : kind==="exam" ? "Exams always block time. Optional priority is ranking information only."
-      : kind==="busy" ? "This interval is unavailable, including inside your study hours."
-      : "Extra study time applies only to these dates. Exams and busy events still block it.";
+      : "This interval is unavailable. You are free at every other time that is not blocked.";
   }
   function openEditor(entry) {
     editing=entry.id ? entry : null;
     const readonly=entry.editable===false;
     form.reset(); error.hidden=true; deleteConfirm.hidden=true;
     document.getElementById("calendar-editor-title").textContent=readonly ? entry.label : editing ? "Edit time" : "Create time";
-    field("kind").value=readonly ? "busy" : entry.kind || "free";
+    field("kind").value=readonly ? "busy" : entry.kind || "busy";
     field("starts_at").value=entry.starts_at; field("ends_at").value=entry.ends_at;
     field("record_id").value=entry.id || "";
     field("priority_starts_at").value=entry.priority_starts_at || "";
@@ -50,7 +49,8 @@
     returnFocus=document.activeElement;dialog.hidden=false;
     document.getElementById("calendar-editor-close").focus();
   }
-  week.entries.forEach(entry => {
+  // Study hours no longer limit anything, so stored weekly rules and extra study time are not drawn.
+  week.entries.filter(entry => entry.kind!=="weekly" && entry.kind!=="free").forEach(entry => {
     const column=grid.querySelector('.calendar-day[data-day="'+entry.day+'"]');
     let element;
     if (entry.kind==="weekly") {

@@ -46,7 +46,8 @@ def snapshot():
 
 def test_core_acceptance_and_matching_share_repository():
     runtime, _ = prepare()
-    assert local_pairs(snapshot()) == [("13:00","14:00"),("15:00","16:00"),("17:00","18:00")]
+    # No study hours: the whole day is free except the busy blocks (14:00 and 16:00).
+    assert local_pairs(snapshot()) == [("00:00","14:00"),("15:00","16:00"),("17:00","00:00")]
     me = matching_core.load_inputs().me
     available = matching_core.free_time(me, parse_instant("2026-10-26T00:00"),parse_instant("2026-10-27T00:00"))
     assert available == [(i.start,i.end) for i in snapshot().available]
@@ -115,12 +116,12 @@ def test_no_alternative_renders_without_crashing():
         assert "Try " not in response.text.split("overlaps this time.")[1].split("</p>")[0]
 
 
-def test_free_exception_not_busy_priority_never_grants_hours():
+def test_study_hours_no_longer_limit_free_time():
     prepare()
     schedule_core.save_weekly({})
-    assert snapshot().available == []
+    assert local_pairs(snapshot()) == [("00:00","14:00"),("15:00","16:00"),("17:00","00:00")]
     schedule_core.create_exception("2026-10-26T13:00","2026-10-26T18:00","free")
-    assert local_pairs(snapshot()) == [("13:00","14:00"),("15:00","16:00"),("17:00","18:00")]
+    assert local_pairs(snapshot()) == [("00:00","14:00"),("15:00","16:00"),("17:00","00:00")]
     assert all(b.source != "weekly" for b in schedule_core.list_busy_for_match())
 
 

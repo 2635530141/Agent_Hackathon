@@ -1,8 +1,7 @@
 """Scheduling orchestration. Reads saved snapshots; never calls a model or scorer."""
 from datetime import datetime, timedelta, timezone
-from .intervals import alternative, clip, contains, duration_filter, overlaps, subtract
+from .intervals import alternative, clip, duration_filter, overlaps, subtract
 from .ports import CalendarProvider, ScheduleRepository, SessionGateway
-from .recurrence import expand
 from .schemas import (Actor, AvailabilitySnapshot, CalendarStatus, ConflictDecision,
                       Horizon, Interval, OwnerConflict, OwnerConflictDecision,
                       OwnerScheduleView, PriorityWindow, SafeConflict, SlotCheck,
@@ -49,9 +48,10 @@ class ScheduleService:
             snapshot_version=state["snapshot_version"])
 
     def _compute(self, subject_id, horizon, bundle, exclude_session_id=None):
-        weekly, warnings = expand(bundle["weekly-rules"], horizon)
-        additions = [Interval(start=e.start, end=e.end) for e in bundle["exceptions"] if e.kind == "available"]
-        base = clip(weekly + additions, horizon)
+        # No study hours: everyone is available unless something blocks the time.
+        # Stored weekly rules and "extra study time" are kept but no longer limit anything.
+        warnings = []
+        base = [Interval(start=horizon.start, end=horizon.end)]
         manual = [Interval(start=e.start, end=e.end) for e in bundle["exceptions"] if e.kind == "unavailable"]
         exams = [Interval(start=e.start, end=e.end) for e in bundle["exams"]]
         reservations = self.sessions.confirmed_reservations(subject_id, horizon)
@@ -118,8 +118,6 @@ class ScheduleService:
             for item in items:
                 if overlaps(item, slot):
                     conflicts.append(SafeConflict(code=code, interval=Interval(start=item.start, end=item.end)))
-        if not contains(base, slot):
-            conflicts.append(SafeConflict(code="OUTSIDE_STUDY_HOURS", interval=slot))
         if snapshot.calendar.verification_level == "unknown":
             conflicts.append(SafeConflict(code="CALENDAR_UNKNOWN", interval=slot))
         conflicts.sort(key=lambda c: (c.interval.start, c.code, c.interval.end))

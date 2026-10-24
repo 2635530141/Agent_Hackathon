@@ -1,0 +1,27 @@
+<section class="card calendar-connection" aria-label="Google Calendar connection">
+  <h2>Google Calendar</h2>
+  {% if private_calendar %}
+  <p>{{ calendar.message }} Next 14 local dates · read-only.</p>
+  <p class="hint">{{ calendar.connection_status }}{% if calendar.last_success_at %} · Last sync {{ calendar.last_success_at }}{% endif %}</p>
+  <div class="cluster">
+    <form method="post" action="/schedule/calendar"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button primary" type="submit">{{ "Reconnect Google Calendar" if calendar.connected else "Connect Google Calendar" }}</button></form>
+    {% if calendar.connected %}
+    <form method="post" action="/schedule/calendar/refresh"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="day" value="{{ selected_day }}"><button class="button" type="submit">Refresh Google Calendar</button></form>
+    <details><summary>Disconnect</summary><p>Remove this app's saved Google credentials and cached calendar events. Your exams and busy times stay saved. Google account permissions can also be removed in your Google account.</p><form method="post" action="/schedule/calendar/disconnect"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button quiet" type="submit">Confirm disconnect</button></form></details>
+    {% endif %}
+  </div>
+  <details><summary>Timezone and conflict check</summary>
+    {% if calendar.coverage_start %}<p class="hint">Coverage: {{ calendar.coverage_start }} – {{ calendar.coverage_end }}</p>{% endif %}
+    <p class="hint">Private Google + manual schedule preview. Confirmed StudyMate sessions are not connected in this preview.</p>
+    <form method="post" action="/schedule/timezone" class="cluster"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="field"><span class="label">IANA timezone</span><input name="timezone" value="{{ timezone }}" required></label><button class="button" type="submit">Save timezone</button></form>
+    <p class="hint">New entries use this timezone; existing weekly rules keep their saved timezone.</p>
+    <form method="post" action="/schedule/check" class="cluster"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="field"><span class="label">Starts</span><input type="datetime-local" name="starts_at" required></label><label class="field"><span class="label">Ends</span><input type="datetime-local" name="ends_at" required></label><button class="button" type="submit">Check conflicts</button></form>
+  </details>
+  {% if conflict_result %}<div class="callout"><p>{{ conflict_result.title or conflict_result.message }}</p>{% if conflict_result.alternative_start %}<p>Alternative: {{ conflict_result.alternative_start }} – {{ conflict_result.alternative_end }}</p>{% endif %}</div>{% endif %}
+  {% else %}
+  <p>Synthetic calendar data only · {{ timezone }}. This demo identity cannot connect a real Google account. Each user can authorize their own account in the separate private calendar preview.</p>
+  <div class="cluster"><a class="button quiet" href="/schedule/google-setup">Google connection setup</a>
+    <form method="post" action="/schedule/calendar/refresh"><input type="hidden" name="day" value="{{ selected_day }}"><button class="button quiet" type="submit">Refresh synthetic snapshot</button></form>
+  </div>
+  {% endif %}
+</section>

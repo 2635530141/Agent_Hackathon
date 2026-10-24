@@ -205,11 +205,7 @@ def own_conflict(starts_at: str, ends_at: str, study_anyway: bool, within_window
     result = get_runtime().service.check_slot(Actor(subject_id=owner_id()), requested, search)
     if not result.blocked:
         return None
-    # Asking for a session time counts as choosing to study then, so usual study hours
-    # do not block it; exams, events, and busy blocks do.
-    hard = [c for c in result.conflicts if not within_window or c.code != "OUTSIDE_STUDY_HOURS"]
-    if not hard:
-        return None
+    hard = list(result.conflicts)
     titles = [c.owner_only_private_title for c in hard if c.owner_only_private_title]
     names = {"EXAM_BUSY":"Exam", "MANUAL_BUSY":"Unavailable", "OUTSIDE_STUDY_HOURS":"Outside study hours",
              "CONFIRMED_SESSION_BUSY":"Confirmed study session", "CALENDAR_UNKNOWN":"Calendar unknown", "CALENDAR_BUSY":"Calendar busy"}

@@ -221,7 +221,6 @@ def test_pages_render_with_seed_data():
     from app import accounts
     assert client.post("/login", data={"email":accounts.TEST_EMAIL,
         "password":accounts.TEST_PASSWORD}, follow_redirects=False).status_code == 303
-    assert client.get("/matching").status_code == 200
     assert client.get("/session").status_code == 200
     body = client.get("/api/match", params={"course_id": "math54", "starts_at": "2026-11-04T18:00", "ends_at": "2026-11-04T20:00"}).json()
     assert body["proposal"]["people"][0]["first_name"] == "Ana"

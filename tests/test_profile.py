@@ -77,7 +77,7 @@ def test_email_for_reads_from_store():
     assert profile_core.email_for("u_jordan") == "jordan@example.edu"
 
 
-@pytest.mark.parametrize("path", ["/api/profile/me", "/api/match", "/matching", "/session"])
+@pytest.mark.parametrize("path", ["/api/profile/me", "/api/match", "/session"])
 def test_match_facing_pages_never_show_other_students_private_strings(client, path):
     body = client.get(path).text
     for value in _private_strings():

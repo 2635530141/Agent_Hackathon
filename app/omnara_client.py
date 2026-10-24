@@ -81,9 +81,8 @@ def _prompt(turns: list[dict], courses: list[dict]) -> str:
         "starts_at and ends_at use YYYY-MM-DDTHH:MM and must be on the same day.\n"
         "If no course and no subject is named, reply only "
         '{"question":"You didn\'t specify a course. Which course do you want to study?"}\n'
-        "If the latest reply is anytime or whenever and names no day, do not invent a clock time. "
-        "Reply only "
-        '{"question":"You didn\'t specify a time. What time do you want to meet?"}\n'
+        "If they say any time, whenever, or that they don't care, and they name no day, "
+        "do not ask for a clock. Use starts_at 2026-10-26T09:00 and ends_at 2026-10-31T21:00.\n"
         "Any time on one day is that whole day, 09:00 to 21:00. Any time on Wednesday is "
         "2026-10-28T09:00 to 2026-10-28T21:00. Do not ask again.\n"
         "A day and a clock also ends the question. Wednesday at 4 is 2026-10-28T16:00 to 2026-10-28T17:00. "

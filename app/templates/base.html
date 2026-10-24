@@ -16,10 +16,7 @@
         {% if not private_calendar %}<a href="/home" {% if nav == "home" %}aria-current="page"{% endif %}>Home</a>
         <a href="/profile" {% if nav == "profile" %}aria-current="page"{% endif %}>Profile</a>
         {% endif %}<a href="/schedule" {% if nav == "schedule" %}aria-current="page"{% endif %}>Schedule</a>
-        {% if not private_calendar %}<a href="/matching" {% if nav == "matching" %}aria-current="page"{% endif %}>Matching</a>
-        <a href="/session" {% if nav == "session" %}aria-current="page"{% endif %}>Session</a>
-        <a href="/invite" {% if nav == "invite" %}aria-current="page"{% endif %}>Invite</a>
-        <a href="/style" {% if nav == "style" %}aria-current="page"{% endif %}>Style</a>
+        {% if not private_calendar %}<a href="/session" {% if nav == "session" %}aria-current="page"{% endif %}>Session</a>
         {% endif %}
       </nav>
       <form method="post" action="/logout">{% if private_calendar %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}

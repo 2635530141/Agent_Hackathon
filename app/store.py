@@ -6,6 +6,7 @@ invitations, feedback.
 """
 
 from copy import deepcopy
+from datetime import datetime
 
 OWNER_ID = "u_maya"
 
@@ -503,6 +504,67 @@ def rooms() -> list[dict]:
     return deepcopy(_rooms)
 
 
+def _overlaps(room: dict, starts_at: str, ends_at: str) -> bool:
+    if room["starts_at"] == starts_at and room["ends_at"] == ends_at:
+        return True
+    try:
+        start, end = datetime.fromisoformat(starts_at), datetime.fromisoformat(ends_at)
+        room_start, room_end = datetime.fromisoformat(room["starts_at"]), datetime.fromisoformat(room["ends_at"])
+    except ValueError:
+        return False
+    return room_start < end and room_end > start
+
+
+def hosted_room(host_id: str, course_id: str, place_name: str, starts_at: str, ends_at: str) -> dict | None:
+    """The room this person already opened for the same course, place, and time."""
+    found = next(
+        (
+            room
+            for room in _rooms
+            if room["host_id"] == host_id
+            and room["course_id"] == course_id
+            and room["place_name"] == place_name
+            and _overlaps(room, starts_at, ends_at)
+        ),
+        None,
+    )
+    return deepcopy(found) if found else None
+
+
+def holds_other_seat(user_id: str, starts_at: str, ends_at: str, course_id: str = "", place_name: str = "") -> bool:
+    """True when this person already sits in a different room at this time."""
+    for room in _rooms:
+        if not any(person["id"] == user_id for person in room["members"]):
+            continue
+        if not _overlaps(room, starts_at, ends_at):
+            continue
+        if (
+            course_id
+            and place_name
+            and room["host_id"] == user_id
+            and room["course_id"] == course_id
+            and room["place_name"] == place_name
+        ):
+            continue
+        return True
+    return False
+
+
+def leave_overlapping(user_id: str, starts_at: str, ends_at: str, keep_id: str) -> int:
+    """One person, one room at a time. Other overlapping seats are given up."""
+    left = 0
+    for room in list(_rooms):
+        if room["id"] == keep_id:
+            continue
+        if not any(person["id"] == user_id for person in room["members"]):
+            continue
+        if not _overlaps(room, starts_at, ends_at):
+            continue
+        if leave_room(room["id"], user_id) in {"left", "closed"}:
+            left += 1
+    return left
+
+
 def create_room(
     host: dict,
     course_id: str,
@@ -518,10 +580,13 @@ def create_room(
         if (
             room["host_id"] == host["id"]
             and room["course_id"] == course_id
-            and room["starts_at"] == starts_at
-            and room["ends_at"] == ends_at
             and room["place_name"] == place_name
+            and _overlaps(room, starts_at, ends_at)
         ):
+            room["capacity"] = max(len(room["members"]), max(2, min(5, capacity)))
+            if not any(person["id"] == host["id"] for person in room["members"]):
+                room["members"].append(host)
+            leave_overlapping(host["id"], room["starts_at"], room["ends_at"], room["id"])
             return deepcopy(room)
     room = {
         "id": next_id("room"),
@@ -532,11 +597,37 @@ def create_room(
         "ends_at": ends_at,
         "place_type": place_type,
         "place_name": place_name,
-        "capacity": max(2, min(4, capacity)),
+        "capacity": max(2, min(5, capacity)),
         "members": [host],
     }
     _rooms.append(room)
+    leave_overlapping(host["id"], room["starts_at"], room["ends_at"], room["id"])
     return deepcopy(room)
+
+
+def resize_hosted(user_id: str, course_id: str, place_name: str, starts_at: str, ends_at: str, capacity: int) -> None:
+    """A sentence that asks for 4 people updates the room this host already opened."""
+    capacity = max(2, min(5, capacity))
+    for room in _rooms:
+        if (
+            room["host_id"] == user_id
+            and room["course_id"] == course_id
+            and room["place_name"] == place_name
+            and _overlaps(room, starts_at, ends_at)
+        ):
+            room["capacity"] = max(len(room["members"]), capacity)
+
+
+def update_room_time(room_id: str, user_id: str, starts_at: str, ends_at: str) -> str:
+    """The host can move a room they opened. Joining someone else's room does not."""
+    room = next((item for item in _rooms if item["id"] == room_id), None)
+    if room is None:
+        return "missing"
+    if room["host_id"] != user_id:
+        return "host"
+    room["starts_at"] = starts_at
+    room["ends_at"] = ends_at
+    return "updated"
 
 
 def join_room(room_id: str, member: dict) -> str:
@@ -544,11 +635,13 @@ def join_room(room_id: str, member: dict) -> str:
     if room is None:
         return "missing"
     if any(person["id"] == member["id"] for person in room["members"]):
-        return "already"
+        left = leave_overlapping(member["id"], room["starts_at"], room["ends_at"], room["id"])
+        return "switched" if left else "already"
     if len(room["members"]) >= room["capacity"]:
         return "full"
     room["members"].append(member)
-    return "joined"
+    left = leave_overlapping(member["id"], room["starts_at"], room["ends_at"], room["id"])
+    return "switched" if left else "joined"
 
 
 def leave_room(room_id: str, user_id: str) -> str:

@@ -1,6 +1,5 @@
 /* StudyMate visual system.
-   Tokens are in :root. Feature pages use the classes below.
-   Add a pattern here and show it on /style before using it on a feature page. */
+   Tokens are in :root. Feature pages use the classes below. */
 
 :root {
   --bg: #f3efe6;
@@ -65,6 +64,9 @@ code {
 }
 
 .site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -202,10 +204,29 @@ code {
   padding: 16px;
 }
 
+.session-summary {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
 .rooms {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.room-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.room-choice.is-open {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .schedule {
@@ -264,8 +285,23 @@ code {
   margin: 0;
 }
 
+.room-card.is-open {
+  border-color: var(--accent);
+}
+
 .room-create {
-  background: var(--accent-soft);
+  background: transparent;
+}
+
+.room-time {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.room-time .field {
+  margin: 0;
 }
 
 .attendees {
@@ -278,10 +314,9 @@ code {
 }
 
 .attendees li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 12px;
-  row-gap: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
@@ -290,9 +325,8 @@ code {
   font-size: 16px;
 }
 
-.attendees li span:first-of-type {
-  justify-self: end;
-  font-weight: 600;
+.attendees .degree {
+  color: var(--ink-soft);
 }
 
 .card h2,

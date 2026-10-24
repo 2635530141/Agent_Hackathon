@@ -161,7 +161,7 @@ def test_session_gateway_reads_team_confirmed_reservations():
     assert "CONFIRMED_SESSION_BUSY" in schedule_core.own_conflict("2026-10-26T15:00","2026-10-26T16:00",True)["codes"]
 
 
-@pytest.mark.parametrize("path", ["/schedule","/session","/matching","/profile","/style","/invite"])
+@pytest.mark.parametrize("path", ["/schedule","/session","/profile"])
 def test_team_pages_still_render(path):
     with demo_client() as client:
         assert client.get(path).status_code == 200

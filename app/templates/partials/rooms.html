@@ -1,79 +1,75 @@
-<section class="stack" id="schedule">
+<section class="stack" id="rooms">
   <div class="stack">
-    <h2 class="section-title">Schedule</h2>
-    <p class="hint">Every open room this week. Click a group to see who is attending.</p>
-  </div>
-  <div class="schedule">
-    {% for day in schedule %}
-    <div class="schedule-day">
-      <h3>{{ day.label }}</h3>
-      {% for room in day.rooms %}
-      {% if ready %}
-        {% set href = '/session?' ~ keep ~ ('&open=' ~ room.id if not selected or selected.id != room.id else '') %}
-      {% else %}
-        {% set href = '/session' ~ ('?open=' ~ room.id if not selected or selected.id != room.id else '') %}
-      {% endif %}
-      <a class="schedule-block{% if selected and selected.id == room.id %} is-open{% endif %}" href="{{ href }}">
-        <strong>{{ room.names }}</strong>
-        <span>{{ room.place_name }}</span>
-        <span class="meta">{{ room.course_code }} · {{ room.clock_label }}</span>
-      </a>
-      {% else %}
-      <p class="hint">Nothing yet</p>
-      {% endfor %}
-    </div>
-    {% endfor %}
+    <p class="session-summary"><strong>{{ course.code }}</strong> · {{ asked_when or when }} · {{ place_labels[place_type] }}{% if note %} · {{ note }}{% endif %}</p>
+    {% if conflict %}
+    <p class="hint">{{ conflict.title }} overlaps this time.{% if alternative_href %} <a href="{{ alternative_href }}">Try {{ alternative_label }} instead.</a>{% endif %}</p>
+    {% elif anytime %}
+    <p class="hint">Every open room for this course. Nothing is reserved until you choose Join.</p>
+    {% endif %}
   </div>
 
-  {% if selected %}
-  <article class="card stack" id="room-card">
-    <div class="room-head">
-      <div>
-        <h3>{{ selected.place_name }}</h3>
-        <p class="meta">{{ selected.course_code }}</p>
-        <p>{{ selected.when }}</p>
-      </div>
-      <span class="chip">{% if selected.full %}Full{% else %}{{ selected.open_seats }} open{% endif %}</span>
-    </div>
-    <p class="hint">{{ selected.taken }} of {{ selected.capacity }} attending</p>
-    <ul class="attendees">
-      {% for member in selected.members %}
-      <li>
-        <strong>{{ member.first_name }}</strong>
-        <span>{{ member.major }}</span>
-        <span class="meta">{% if member.id == selected.host_id %}Host · {% endif %}year {{ member.year }}</span>
-      </li>
+  <div class="stack">
+    <h2 class="section-title">Join a room</h2>
+    {% if rooms %}
+    <div class="rooms">
+      {% for room in rooms %}
+      <article class="card stack room-card{% if selected and selected.id == room.id %} is-open{% endif %}">
+        <div class="room-head">
+          <div>
+            <h3>{{ room.place_name }}</h3>
+            <p>{{ room.course_code }} · {{ room.when }} · room for {{ room.capacity }}</p>
+          </div>
+          <span class="chip">{% if room.full %}Full{% else %}{{ room.open_seats }} open{% endif %}</span>
+        </div>
+        <ul class="attendees">
+          {% for member in room.members %}
+          <li>
+            <strong>{{ member.first_name }}{% if member.id == room.host_id %} · host{% endif %}</strong>
+            <span class="degree">{{ member.major }} · year {{ member.year }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        <form method="post" action="/session/rooms/{{ room.id }}/{% if room.joined %}leave{% else %}join{% endif %}">
+          <input type="hidden" name="course_id" value="{{ course.id }}">
+          <input type="hidden" name="starts_at" value="{{ starts_at }}">
+          <input type="hidden" name="ends_at" value="{{ ends_at }}">
+          <input type="hidden" name="place_type" value="{{ place_type }}">
+          <input type="hidden" name="note" value="{{ note }}">
+          <input type="hidden" name="study_anyway" value="{{ '1' if study_anyway else '0' }}">
+          <input type="hidden" name="sentence" value="{{ sentence }}">
+          {% if room.joined %}
+          <button class="button quiet" type="submit">Leave</button>
+          {% elif room.full %}
+          <button class="button quiet" type="button" disabled>Full</button>
+          {% else %}
+          <button class="button primary" type="submit">Join</button>
+          {% endif %}
+        </form>
+      </article>
       {% endfor %}
-    </ul>
-    <form method="post" action="/session/rooms/{{ selected.id }}/{% if selected.joined %}leave{% else %}join{% endif %}">
-      {% if ready %}
-      <input type="hidden" name="course_id" value="{{ course.id }}">
-      <input type="hidden" name="starts_at" value="{{ starts_at }}">
-      <input type="hidden" name="ends_at" value="{{ ends_at }}">
-      <input type="hidden" name="place_type" value="{{ place_type }}">
-      <input type="hidden" name="note" value="{{ note }}">
-      <input type="hidden" name="study_anyway" value="{{ '1' if study_anyway else '0' }}">
-      <input type="hidden" name="sentence" value="{{ sentence }}">
-      {% endif %}
-      {% if selected.joined %}
-      <button class="button quiet" type="submit">Leave</button>
-      {% elif selected.full %}
-      <button class="button quiet" type="button" disabled>Full</button>
-      {% else %}
-      <button class="button primary" type="submit">Join</button>
-      {% endif %}
-    </form>
-  </article>
-  {% endif %}
+    </div>
+    {% else %}
+    <p class="hint">No open room matches this yet.</p>
+    {% endif %}
+  </div>
 
-  {% if ready %}
-  <form method="post" action="/session/rooms" class="card room room-create stack">
+  {% set hosting = namespace(open=false) %}
+  {% for room in rooms %}
+    {% if user and room.host_id == user.id and room.course_id == course.id and room.place_name == new_place and room.starts_at < ends_at and room.ends_at > starts_at %}
+      {% set hosting.open = true %}
+    {% endif %}
+  {% endfor %}
+  {% if not hosting.open %}
+  <form method="post" action="/session/rooms" class="card room-create stack">
     <div>
-      <h3>Open a new room</h3>
-      <p class="meta">{{ course.code }} · {{ new_place }}</p>
-      <p>{{ asked_when }}</p>
+      <h3>Or open your own</h3>
+      {% if anytime %}
+      <p>{{ new_place }}. Choose the time yourself. You become the host, not a guest in someone else's room.</p>
+      {% else %}
+      <p>{{ new_place }} · {{ asked_when }}</p>
+      <p class="hint">A room for {{ group_size }}. You take the first seat.</p>
+      {% endif %}
     </div>
-    <p class="hint">A room for {{ group_size }}. You take the first seat. It shows up on this schedule.</p>
     <input type="hidden" name="course_id" value="{{ course.id }}">
     <input type="hidden" name="starts_at" value="{{ starts_at }}">
     <input type="hidden" name="ends_at" value="{{ ends_at }}">
@@ -81,11 +77,17 @@
     <input type="hidden" name="note" value="{{ note }}">
     <input type="hidden" name="study_anyway" value="{{ '1' if study_anyway else '0' }}">
     <input type="hidden" name="sentence" value="{{ sentence }}">
-    <div class="cluster">
-      <button class="button primary" type="submit">Open a new room</button>
+    <input type="hidden" name="group_size" value="{{ group_size }}">
+    {% if anytime %}
+    <div class="room-time">
+      <label class="field"><span class="label">Day</span><input type="date" name="room_day" value="2026-10-28" required></label>
+      <label class="field"><span class="label">From</span><input type="time" name="room_start" required></label>
+      <label class="field"><span class="label">To</span><input type="time" name="room_end" required></label>
+    </div>
+    {% endif %}
+    <div>
+      <button class="button" type="submit">Open a room</button>
     </div>
   </form>
-  {% else %}
-  <p class="hint">Describe a session above to open a new room on this schedule.</p>
   {% endif %}
 </section>

@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Session · StudyMate{% endblock %}
-{% block feature_styles %}<link rel="stylesheet" href="/static/calendar.css">{% endblock %}
 {% block content %}
 <div class="stack-lg">
   <div class="stack">
-    <h1 class="title">New session</h1>
-    <p class="lede">Write the session in a sentence. The schedule shows every room. Click a group to see who is there, or open a new room.</p>
+    <h1 class="title">{% if ready %}Your session{% else %}New session{% endif %}</h1>
+    {% if not ready %}
+    <p class="lede">Write the session in a sentence. Rooms you can join show up once the course and time are known.</p>
+    {% endif %}
   </div>
   {% if error %}
   <div class="callout warn"><p>{{ error }}</p></div>
@@ -38,6 +39,8 @@
       <a class="button quiet" href="/session?fresh=1">Start over</a>
     </div>
   </form>
+  {% elif ready %}
+  <p><a href="/session?fresh=1">Start over</a></p>
   {% elif not thread %}
   <form method="post" action="/session/interpret" class="card stack">
     <label class="field">
@@ -53,21 +56,7 @@
   {% endif %}
 
   {% if ready %}
-  <dl class="facts">
-    <dt>Course</dt><dd>{{ course.code }}</dd>
-    <dt>When</dt><dd>{{ asked_when or when }}</dd>
-    <dt>Place</dt><dd>{{ place_labels[place_type] }}</dd>
-    {% if note %}<dt>Also</dt><dd>{{ note }}</dd>{% endif %}
-  </dl>
-  {% endif %}
-
   {% include "partials/rooms.html" %}
-
-  {% if conflict %}
-    {% with interactive=true %}
-      {% include "partials/conflict.html" %}
-    {% endwith %}
   {% endif %}
-  {% include "partials/calendar_export.html" %}
 </div>
 {% endblock %}

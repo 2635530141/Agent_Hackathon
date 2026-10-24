@@ -62,7 +62,7 @@ def test_exam_form_edit_updates_page_and_matching():
         assert len(body["available"]) == 2 and len(body["priority_windows"]) == 1
         me = matching_core.load_inputs().me
         assert matching_core.free_time(me,parse_instant("2026-10-26T15:00"),parse_instant("2026-10-26T17:30")) == []
-        assert "5:30 PM" in client.get("/schedule?day=2026-10-26").text
+        assert "2026-10-26T17:30" in client.get("/schedule?day=2026-10-26").text
 
 
 def test_restart_retains_edits_and_utc_instants():

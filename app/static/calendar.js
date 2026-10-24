@@ -1,12 +1,15 @@
 (() => {
   const initial = JSON.parse(document.getElementById("calendar-week-data").textContent);
   const week = initial.week, grid = document.getElementById("calendar-grid");
-  const scroller = document.getElementById("calendar-scroller");
   const dialog = document.getElementById("calendar-editor"), form = document.getElementById("calendar-entry-form");
   const error = document.getElementById("calendar-editor-error");
   const remove = document.getElementById("calendar-entry-remove");
   const deleteConfirm = document.getElementById("calendar-delete-confirmation");
   const save = document.getElementById("calendar-entry-save");
+  const hoursSelect = document.getElementById("calendar-hours-range");
+  const outsideButton = document.getElementById("calendar-outside-times");
+  const renderedEntries = [];
+  let rangeStart=16, rangeEnd=46; // Half-hour units: 08:00–23:00.
   let editing=null, activeDay=Math.max(0,week.days.findIndex(d=>d.selected)), drag=null, selection=null;
   let returnFocus=null;
   function closeEditor() {dialog.hidden=true;if(returnFocus) returnFocus.focus();}
@@ -68,40 +71,101 @@
     }
     element.dataset.layer=entry.kind; element.style.top=entry.top+"%"; element.style.height=entry.height+"%";
     element.title=entry.label+" · "+entry.time_label+" · "+week.timezone; column.append(element);
+    renderedEntries.push({element,entry,start:entry.top*48/100,end:(entry.top+entry.height)*48/100});
   });
+  function updateOutsideNotice() {
+    const dayView=document.getElementById("calendar-view").value==="day";
+    const count=renderedEntries.filter(({entry,start,end})=>entry.kind!=="available" &&
+      (!dayView || entry.day===activeDay) && (start<rangeStart-0.001 || end>rangeEnd+0.001)).length;
+    outsideButton.hidden=!count;
+    outsideButton.textContent=count+" outside view · Show all";
+    outsideButton.setAttribute("aria-label","Show all hours: "+count+" "+(count===1?"block extends":"blocks extend")+" outside the visible hours");
+  }
+  function renderHours() {
+    rangeStart=hoursSelect.value==="all"?0:16;
+    rangeEnd=hoursSelect.value==="all"?48:46;
+    const span=rangeEnd-rangeStart;
+    grid.style.setProperty("--calendar-visible-hours",span/2);
+    grid.querySelectorAll(".calendar-hours [data-hour]").forEach(label=>{
+      const half=Number(label.dataset.hour)*2;
+      label.hidden=half<rangeStart || half>rangeEnd;
+      label.style.top=(half-rangeStart)/span*100+"%";
+      label.classList.toggle("range-first",half===rangeStart);
+      label.classList.toggle("range-last",half===rangeEnd);
+    });
+    grid.querySelectorAll(".cal-slot").forEach(slot=>{
+      const half=Number(slot.dataset.half);
+      slot.title=slot.getAttribute("aria-label");
+      slot.hidden=half<rangeStart || half>=rangeEnd;
+      slot.style.top=(half-rangeStart)/span*100+"%";
+      slot.style.height=100/span+"%";
+    });
+    renderedEntries.forEach(({element,start,end})=>{
+      const a=Math.max(start,rangeStart),b=Math.min(end,rangeEnd);
+      element.hidden=b<=a;
+      element.style.top=(a-rangeStart)/span*100+"%";
+      element.style.height=Math.max(0,b-a)/span*100+"%";
+    });
+    updateOutsideNotice();
+    fitTimetable();
+  }
   function viewChanged() {
     const dayView=document.getElementById("calendar-view").value==="day";
     document.querySelector(".calendar-board").classList.toggle("calendar-day-view",dayView);
     grid.querySelectorAll("[data-day]").forEach(el=>el.classList.toggle("active-day",Number(el.dataset.day)===activeDay));
+    updateOutsideNotice();
   }
   const viewSelect=document.getElementById("calendar-view");
-  try {viewSelect.value=sessionStorage.getItem("studymate-calendar-view") || (matchMedia("(max-width:700px)").matches?"day":"week");}
-  catch (_) {if (matchMedia("(max-width:700px)").matches) viewSelect.value="day";}
-  viewSelect.onchange=()=>{try{sessionStorage.setItem("studymate-calendar-view",viewSelect.value);}catch(_){}viewChanged();}; viewChanged();
+  // Start with the complete week, including on narrow screens.
+  const viewKey="studymate-calendar-full-view";
+  try {viewSelect.value=sessionStorage.getItem(viewKey) || "week";} catch (_) {}
+  viewSelect.onchange=()=>{try{sessionStorage.setItem(viewKey,viewSelect.value);}catch(_){}viewChanged();}; viewChanged();
   grid.querySelectorAll(".calendar-day-heading").forEach(button=>button.onclick=()=>{
     activeDay=Number(button.dataset.day); viewSelect.value="day";
-    try{sessionStorage.setItem("studymate-calendar-view","day");}catch(_){}
+    try{sessionStorage.setItem(viewKey,"day");}catch(_){}
     location.assign("/schedule?day="+week.days[activeDay].date);
   });
-  scroller.scrollTop=8*60;
-  document.querySelectorAll("[data-layer]").forEach(input=>{
-    if (input.tagName!=="INPUT") return;
-    input.onchange=()=>grid.querySelectorAll('[data-layer="'+input.dataset.layer+'"]').forEach(el=>el.hidden=!input.checked);
-  });
+  function fitTimetable() {
+    const column=grid.querySelector(".calendar-day.active-day");
+    const footer=document.getElementById("calendar-selection-status");
+    // Measure real controls, including wrapped Google status or validation messages.
+    const top=column.getBoundingClientRect().top+window.scrollY;
+    const height=Math.max(192,window.innerHeight-top-footer.getBoundingClientRect().height-18);
+    grid.style.setProperty("--calendar-day-height",height+"px");
+    const hourStep=height/((rangeEnd-rangeStart)/2)<32?2:1;
+    grid.style.setProperty("--calendar-hour-step",hourStep);
+    grid.querySelectorAll(".calendar-hours [data-hour]").forEach(label=>{
+      const hour=Number(label.dataset.hour),half=hour*2;
+      label.hidden=half<rangeStart || half>rangeEnd ||
+        (hour%hourStep!==0 && half!==rangeStart && half!==rangeEnd);
+    });
+    document.getElementById("calendar-scroller").setAttribute("aria-label","Timetable "+clock(rangeStart)+"–"+(rangeEnd===48?"24:00":clock(rangeEnd)));
+    renderedEntries.forEach(({element})=>element.classList.toggle("cal-event-short",element.getBoundingClientRect().height<32));
+  }
+  const resize=new ResizeObserver(fitTimetable);
+  document.querySelectorAll(".site-header,.calendar-connection,.calendar-toolbar,.calendar-meta,.calendar-zone,.calendar-page>.callout")
+    .forEach(element=>resize.observe(element));
+  window.addEventListener("resize",fitTimetable);
+  try {hoursSelect.value=sessionStorage.getItem("studymate-calendar-visible-hours") || "study";} catch (_) {}
+  hoursSelect.onchange=()=>{try{sessionStorage.setItem("studymate-calendar-visible-hours",hoursSelect.value);}catch(_){}renderHours();};
+  outsideButton.onclick=()=>{hoursSelect.value="all";hoursSelect.onchange();hoursSelect.focus();};
+  renderHours();
   function selectedSlot(target) { return target.closest && target.closest(".cal-slot"); }
   grid.addEventListener("pointerdown",event=>{
     const slot=selectedSlot(event.target);
     if (!slot || event.button!==0 || event.pointerType==="touch") return;
     drag={column:slot.parentElement,start:Number(slot.dataset.half),end:Number(slot.dataset.half)};
     selection=document.createElement("div"); selection.className="cal-selection"; drag.column.append(selection);
-    selection.style.top=drag.start*30+"px"; selection.style.height="30px"; event.preventDefault();
+    selection.style.top=(drag.start-rangeStart)/(rangeEnd-rangeStart)*100+"%";
+    selection.style.height=100/(rangeEnd-rangeStart)+"%"; event.preventDefault();
   });
   grid.addEventListener("pointermove",event=>{
     if (!drag) return;
     const rect=drag.column.getBoundingClientRect();
-    drag.end=Math.max(0,Math.min(47,Math.floor((event.clientY-rect.top)/30)));
-    selection.style.top=Math.min(drag.start,drag.end)*30+"px";
-    selection.style.height=(Math.abs(drag.end-drag.start)+1)*30+"px";
+    const span=rangeEnd-rangeStart;
+    drag.end=Math.max(rangeStart,Math.min(rangeEnd-1,rangeStart+Math.floor((event.clientY-rect.top)/rect.height*span)));
+    selection.style.top=(Math.min(drag.start,drag.end)-rangeStart)/span*100+"%";
+    selection.style.height=(Math.abs(drag.end-drag.start)+1)/span*100+"%";
   });
   document.addEventListener("pointerup",()=>{
     if (!drag) return;
@@ -131,7 +195,6 @@
       else if(!event.shiftKey&&document.activeElement===last) {event.preventDefault();first.focus();}
     }
   });
-  document.getElementById("calendar-jump").onchange=event=>{if(event.target.value) location.assign("/schedule?day="+event.target.value);};
   field("kind").onchange=kindChanged;
   remove.onclick=()=>{deleteConfirm.hidden=false;};
 })();

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from app.contracts import BusyInterval, Exam, MatchBusyInterval
 from app.store import (
+    OWNER_ID,
     add_exam,
     add_exception,
     busy,
@@ -44,7 +45,7 @@ def list_busy() -> list[BusyInterval]:
     return [BusyInterval.model_validate(block) for block in busy()]
 
 
-def list_busy_for_match() -> list[MatchBusyInterval]:
+def list_busy_for_match(student_id: str = OWNER_ID) -> list[MatchBusyInterval]:
     return [
         MatchBusyInterval(
             id=block["id"],
@@ -53,13 +54,13 @@ def list_busy_for_match() -> list[MatchBusyInterval]:
             ends_at=block["ends_at"],
             kind=block.get("kind"),
         )
-        for block in busy()
+        for block in busy(student_id)
     ]
 
 
-def list_exams() -> list[Exam]:
+def list_exams(student_id: str = OWNER_ID) -> list[Exam]:
     views = []
-    for exam in exams():
+    for exam in exams(student_id):
         priority_start = None
         if exam["priority"]:
             start = _parse(exam["starts_at"]) - timedelta(days=3)
@@ -177,5 +178,5 @@ def own_conflict(starts_at: str, ends_at: str, study_anyway: bool) -> dict | Non
     return None
 
 
-def weekly_hours() -> dict[str, tuple[str, str]]:
-    return weekly()
+def weekly_hours(student_id: str = OWNER_ID) -> dict[str, tuple[str, str]]:
+    return weekly(student_id)

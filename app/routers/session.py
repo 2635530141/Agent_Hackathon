@@ -38,8 +38,11 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
     proposal = None
     when = ""
     if conflict is None and not error:
-        proposal = matching_core.build_proposal(course["code"], starts_at, ends_at, place_type, note)
-        when = pretty_range(proposal.starts_at, proposal.ends_at)
+        try:
+            proposal = matching_core.build_proposal(course["code"], starts_at, ends_at, place_type, note, study_anyway)
+            when = pretty_range(proposal.starts_at, proposal.ends_at)
+        except matching_core.NoMatch as exc:
+            error = str(exc)
     invitation = store.invitation()
     return {
         "course": course,
@@ -166,8 +169,13 @@ def confirm_invite(
 ):
     store.set_invite_text(invite)
     course = store.course_by_id(course_id) or store.courses()[0]
-    proposal = matching_core.build_proposal(course["code"], starts_at, ends_at, place_type, note)
-    store.set_invitation_details(course["id"], starts_at, ends_at, proposal.place.name)
+    try:
+        proposal = matching_core.build_proposal(
+            course["code"], starts_at, ends_at, place_type, note, study_anyway == "1"
+        )
+    except matching_core.NoMatch as exc:
+        return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, str(exc))
+    store.set_invitation_details(course["id"], proposal.starts_at, proposal.ends_at, proposal.place.name)
     store.set_invitation_status("pending")
     return _redirect_session(
         course_id,

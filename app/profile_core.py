@@ -36,6 +36,14 @@ def eligible_student_ids() -> list[str]:
     return [person["id"] for person in others()]
 
 
+def public_profile_of(student_id: str) -> PublicProfile | None:
+    """Another student's public fields, for matching."""
+    for person in others():
+        if person["id"] == student_id:
+            return PublicProfile.model_validate(person)
+    return None
+
+
 def update_profile(data: dict) -> PrivateProfile:
     current = owner()
     study_style = data.get("study_style", current["study_style"])

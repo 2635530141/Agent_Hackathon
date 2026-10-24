@@ -120,6 +120,22 @@ code {
   margin: 32px auto 64px;
 }
 
+.page:has(.session-screen) {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 24px 24px 48px;
+}
+
+.empty-sessions {
+  margin: 0;
+  padding: 20px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--ink-soft);
+  background: var(--bg-elevated);
+}
+
 .stack {
   display: flex;
   flex-direction: column;

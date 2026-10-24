@@ -5,12 +5,12 @@ from secrets import token_urlsafe
 from cryptography.fernet import Fernet
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client-file", type=Path, required=True)
     parser.add_argument("--port", type=int, default=8017)
     parser.add_argument("--private-dir", type=Path, default=Path("data/private-calendar"))
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     args.private_dir.mkdir(parents=True,exist_ok=True)
     for name,value in (("calendar.key",Fernet.generate_key()),("session.key",token_urlsafe(64).encode())):
         path = args.private_dir/name

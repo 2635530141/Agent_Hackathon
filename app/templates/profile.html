@@ -19,17 +19,25 @@
     <form method="post" action="/profile" class="stack">
       <fieldset class="stack">
         <legend class="section-title">Study style</legend>
-        <p class="hint">Pick the closest suggestion, then describe it in your own words if you like.</p>
+        <p class="hint">Optional. Tick any that fit.</p>
         <div class="choices">
+          <label class="choice">
+            <input type="checkbox" name="study_styles" value="any" {% if not profile.study_styles and not profile.study_style_note %}checked{% endif %}>
+            No preference
+          </label>
           {% for value, label in style_labels.items() %}
           <label class="choice">
-            <input type="radio" name="study_style" value="{{ value }}" {% if profile.study_style == value %}checked{% endif %}>
+            <input type="checkbox" name="study_styles" value="{{ value }}" {% if value in profile.study_styles %}checked{% endif %}>
             {{ label }}
           </label>
           {% endfor %}
+          <label class="choice">
+            <input type="checkbox" name="study_styles" value="other" {% if profile.study_style_note %}checked{% endif %}>
+            Others
+          </label>
         </div>
         <label class="field">
-          <span class="label">In your own words (optional)</span>
+          <span class="label">Other study style</span>
           <input name="study_style_note" value="{{ profile.study_style_note }}" maxlength="200" placeholder="e.g. Pomodoro sessions, then we compare answers">
         </label>
       </fieldset>
@@ -37,9 +45,9 @@
       <fieldset class="stack">
         <legend class="section-title">Travel</legend>
         <label class="field">
-          <span class="label">Street address</span>
-          <input name="street_address" value="{{ profile.street_address }}" autocomplete="street-address">
-          <span class="hint">Located with Google Maps to center your radius on home. A match never receives this string.</span>
+          <span class="label">Address</span>
+          <input name="street_address" value="{{ profile.street_address }}" autocomplete="street-address" required>
+          <span class="hint">Your travel radius is centered on this address, located with Google Maps. A match never receives it.</span>
         </label>
         {% if not maps_connected %}
         <p class="hint">Google Maps is not connected yet, so only a few demo addresses can be found. Add GOOGLE_MAPS_API_KEY to .env to look up any address.</p>
@@ -48,29 +56,15 @@
           <span class="label">Travel radius in meters</span>
           <input name="radius_meters" type="number" min="200" max="20000" value="{{ profile.radius_meters }}">
         </label>
-        <div class="choices">
-          <label class="choice">
-            <input type="radio" name="anchor" value="home" {% if profile.anchor == "home" %}checked{% endif %}>
-            Center on home
-          </label>
-          <label class="choice">
-            <input type="radio" name="anchor" value="campus" {% if profile.anchor == "campus" %}checked{% endif %}>
-            Center on campus
-          </label>
-        </div>
-        <p class="hint">Your radius is centered on {{ "home" if profile.anchor == "home" else "campus" }}. <a href="{{ anchor_map }}" target="_blank" rel="noopener">See it on Google Maps</a></p>
+        <p class="hint"><a href="{{ anchor_map }}" target="_blank" rel="noopener">See your radius center on Google Maps</a></p>
       </fieldset>
 
       <fieldset class="stack">
         <legend class="section-title">Group and places</legend>
-        <div class="choices">
-          {% for size in (2, 3, 4) %}
-          <label class="choice">
-            <input type="radio" name="group_size" value="{{ size }}" {% if profile.group_size == size %}checked{% endif %}>
-            Group of {{ size }}
-          </label>
-          {% endfor %}
-        </div>
+        {% with label="Group size", low_name="group_min", high_name="group_max", min=group_sizes[0], max=group_sizes[-1], low=profile.group_min, high=profile.group_max, unit="people" %}
+          {% include "partials/range_pair.html" %}
+        {% endwith %}
+        <span class="hint">Drag both ends. Counts everyone in the group, including you.</span>
         <div class="choices">
           {% for value, label in place_labels.items() %}
           <label class="choice">
@@ -78,7 +72,15 @@
             {{ label }}
           </label>
           {% endfor %}
+          <label class="choice">
+            <input type="checkbox" name="place_types" value="other" {% if profile.place_note %}checked{% endif %}>
+            Others
+          </label>
         </div>
+        <label class="field">
+          <span class="label">Other place</span>
+          <input name="place_note" value="{{ profile.place_note }}" maxlength="100" placeholder="e.g. Student union study rooms">
+        </label>
       </fieldset>
 
       <fieldset class="stack">
@@ -105,28 +107,30 @@
       </fieldset>
 
       <fieldset class="stack">
-        <legend class="section-title">Private matching</legend>
-        <p class="hint">Optional. Used later as a filter. Omitted from the profile card and the invite.</p>
-        <div class="split">
-          <label class="field">
-            <span class="label">I identify as</span>
-            <select name="gender_self">
-              <option value="" {% if not profile.gender_self %}selected{% endif %}>Leave blank</option>
-              <option value="woman" {% if profile.gender_self == "woman" %}selected{% endif %}>Woman</option>
-              <option value="man" {% if profile.gender_self == "man" %}selected{% endif %}>Man</option>
-              <option value="nonbinary" {% if profile.gender_self == "nonbinary" %}selected{% endif %}>Non-binary</option>
-            </select>
+        <legend class="section-title">Gender</legend>
+        <p class="hint">Optional. Used only as a private filter. Never shown on your profile or an invite.</p>
+        <div class="choices">
+          <label class="choice">
+            <input type="radio" name="gender_self" value="" {% if not profile.gender_self %}checked{% endif %}>
+            Prefer not to say
           </label>
-          <label class="field">
-            <span class="label">Prefer to study with</span>
-            <select name="gender_preference">
-              <option value="" {% if not profile.gender_preference %}selected{% endif %}>No preference</option>
-              <option value="woman" {% if profile.gender_preference == "woman" %}selected{% endif %}>Women</option>
-              <option value="man" {% if profile.gender_preference == "man" %}selected{% endif %}>Men</option>
-              <option value="nonbinary" {% if profile.gender_preference == "nonbinary" %}selected{% endif %}>Non-binary students</option>
-            </select>
+          {% for value, label in gender_labels.items() %}
+          <label class="choice">
+            <input type="radio" name="gender_self" value="{{ value }}" {% if profile.gender_self == value %}checked{% endif %}>
+            {{ label }}
           </label>
+          {% endfor %}
         </div>
+        <span class="label">Prefer to study with</span>
+        <div class="choices">
+          {% for value, label in gender_labels.items() %}
+          <label class="choice">
+            <input type="checkbox" name="gender_preference" value="{{ value }}" {% if value in profile.gender_preference %}checked{% endif %}>
+            {{ label }}
+          </label>
+          {% endfor %}
+        </div>
+        <span class="hint">Leave all unticked for no preference.</span>
       </fieldset>
 
       <fieldset class="stack">
@@ -149,15 +153,23 @@
         <span class="meta" id="match-major">{{ public.major }} · year {{ public.year }}</span>
       </div>
       <div class="chips">
-        <span class="chip">{{ style_labels[public.study_style] }}</span>
-        <span class="chip">Group of {{ public.group_size }}</span>
+        {% for style in public.study_styles %}
+        <span class="chip">{{ style_labels[style] }}</span>
+        {% endfor %}
+        {% if not public.study_styles and not public.study_style_note %}
+        <span class="chip">No study style preference</span>
+        {% endif %}
+        <span class="chip">Group of {{ public.group_min }}{% if public.group_max != public.group_min %}–{{ public.group_max }}{% endif %}</span>
         {% for place in public.place_types %}
         <span class="chip">{{ place_labels[place] }}</span>
         {% endfor %}
-        <span class="chip">{{ public.radius_meters }} m · {{ public.anchor }}</span>
+        <span class="chip">{{ public.radius_meters }} m radius</span>
       </div>
       {% if public.study_style_note %}
-      <p class="meta">{{ public.study_style_note }}</p>
+      <p class="meta">Study style: {{ public.study_style_note }}</p>
+      {% endif %}
+      {% if public.place_note %}
+      <p class="meta">Also likes: {{ public.place_note }}</p>
       {% endif %}
       <ul class="busy-list">
         {% for course in courses if course.id in public.course_ids %}
@@ -168,4 +180,5 @@
     </aside>
   </div>
 </div>
+<script src="/static/range.js" defer></script>
 {% endblock %}

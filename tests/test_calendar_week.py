@@ -97,3 +97,15 @@ def test_existing_session_start_and_send_invoke_refresh_hook(monkeypatch):
         assert client.post("/session/confirm",data={"course_id":"cs61a","starts_at":"2026-10-29T19:00",
             "ends_at":"2026-10-29T20:00","place_type":"coffee"},follow_redirects=False).status_code==303
     assert calls==["refresh","refresh"]
+
+
+def test_synthetic_refresh_retains_selected_day_and_rejects_non_date_redirect():
+    with TestClient(app) as client:
+        login(client)
+        page = client.get("/schedule?day=2026-10-27")
+        assert page.text.count('name="day" value="2026-10-27"') >= 2
+        response = client.post("/schedule/calendar/refresh",data={"day":"2026-10-27"},follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/schedule?day=2026-10-27&saved=synthetic-refresh"
+        invalid = client.post("/schedule/calendar/refresh",data={"day":"https://evil.example"},follow_redirects=False)
+        assert invalid.headers["location"] == "/schedule?saved=synthetic-refresh"

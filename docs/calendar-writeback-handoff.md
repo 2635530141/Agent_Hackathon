@@ -56,6 +56,10 @@ Stephen must replace the fixed Profile/calendar owner boundary across the host b
 
 Both services must use the SAME authoritative reservation gateway and repository/transaction engine. The builder rejects a seeded demo database and a synthetic Session gateway. No environment flag silently turns the demo into live mode.
 
+Import the builders from app.scheduling.google_setup and the real gateway adapter from app.scheduling.export_models. Supply the team's own reader, reservation lookup and mutation guard; the names above are explicit integration dependencies, not implemented production services.
+
+Main changes: app/scheduling/export_{models,storage,service}.py; google_identity.py/google_writer.py and the existing OAuth/vault/composition; core migration 003 and trusted self-exclusion; session_hooks.py/adapters.py; Calendar executor/editor routers and minimal main/Session hooks; week_view.py, Calendar CSS/JavaScript/templates; two additive base-template extension points and a style-guide specimen. Tests are test_calendar_exports.py and test_calendar_week.py. Profile, shared contracts, Matching scorer, store, Omnara and global design tokens are unchanged in this phase.
+
 ## Approval, OAuth and executor endpoints
 
 Only two-person Sessions are export eligible in this phase. Both current acceptances, current organizer, active Session, current content and bound account are checked on the server. Group export is disabled pending the team's Q3 decision. Exams, manual unavailable time and other users' conflicts remain hard. No valid request/revision-scoped organizer override is available in the current team interface, so ordinary conflicts also remain blocked.

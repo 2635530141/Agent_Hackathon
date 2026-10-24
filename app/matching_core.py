@@ -548,6 +548,7 @@ def suggest_places(
             not row["open"],
             row["kind"] != place_type,
             not row["hours_known"],
+            -row.get("quality", 3),
             row["kind"] not in preferred,
             -float(row["rating"] or 0),
             row["walk_minutes"],

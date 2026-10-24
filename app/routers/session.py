@@ -331,7 +331,7 @@ def _session_context(
         and (start.hour, start.minute, end.hour, end.minute) == (9, 0, 21, 0)
     ):
         asked_when = f"{start:%a} {start.day} {start:%b}, any time"
-    return {
+    context = {
         "course": course,
         "courses": store.courses(),
         "starts_at": starts_at,
@@ -373,6 +373,8 @@ def _session_context(
         "group_size": _spoken_group_size(sentence) or public_profile().group_size,
         "new_place": _place_name(place_type, note),
     }
+    context["new_place_details"] = place_details(context["new_place"])
+    return context
 
 
 def _family(course_id: str) -> str:
@@ -392,11 +394,11 @@ def _place_name(place_type: str, note: str) -> str:
     for place in store.places():
         if place["name"].lower() in folded:
             return place["name"]
-    # The nearest real place of that kind around the host (Google Maps or OpenStreetMap).
+    # The best-documented real place of that kind around the host (Google Maps or OpenStreetMap).
     host = public_profile()
-    nearby = live_places.nearby(place_type, host.anchor_lat, host.anchor_lng, host.radius_meters)
-    if nearby:
-        return nearby[0]["name"]
+    found = live_places.best(place_type, host.anchor_lat, host.anchor_lng, host.radius_meters)
+    if found:
+        return found["name"]
     for place in store.places():
         if place["kind"] == place_type:
             return place["name"]
@@ -425,6 +427,15 @@ _WEEK = (
 )
 
 
+def place_details(name: str) -> dict:
+    """Address and Google Maps link for a room's place, so people can check it exists."""
+    found = live_places.known(name) or next(
+        ({"address": place["address"], "map_url": place["map_url"]} for place in store.places() if place["name"] == name),
+        None,
+    )
+    return found or {"address": "", "map_url": ""}
+
+
 def _decorate_room(room: dict, user_id: str) -> dict:
     start, end = _clock(room["starts_at"]), _clock(room["ends_at"])
     taken = len(room["members"])
@@ -441,6 +452,7 @@ def _decorate_room(room: dict, user_id: str) -> dict:
         "full": taken >= room["capacity"],
         "joined": any(person["id"] == user_id for person in room["members"]),
         "day": start.day if start else 0,
+        "place": place_details(room["place_name"]),
     }
 
 

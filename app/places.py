@@ -47,8 +47,14 @@ GOOGLE_FIELDS = ",".join(
         "regularOpeningHours",
         "googleMapsUri",
         "businessStatus",
+        "userRatingCount",
     )
 )
+# OpenStreetMap tags that show someone maintains the entry. Entries with none of
+# these (no street number, hours, contact, brand, or check date) are usually tiny,
+# unverified, or out of date, so they are dropped.
+OSM_CONTACT_TAGS = ("website", "phone", "contact:website", "contact:phone", "contact:instagram", "brand:wikidata")
+OSM_CHECK_TAGS = ("check_date", "survey:date", "check_date:opening_hours")
 DAY_CODES = {"mo": 0, "tu": 1, "we": 2, "th": 3, "fr": 4, "sa": 5, "su": 6}
 
 Period = tuple[int, str, str]  # weekday (Monday 0), opens "HH:MM", closes "HH:MM"
@@ -59,6 +65,8 @@ class PlacesError(Exception):
 
 
 _cache: dict[tuple, tuple[float, object]] = {}
+# Every place handed out, by name, so pages can show its address and map link later.
+_known: dict[str, dict] = {}
 _lock = threading.Lock()
 _last_osm_call = 0.0
 
@@ -97,6 +105,12 @@ def meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 def clear_cache() -> None:
     _cache.clear()
+    _known.clear()
+
+
+def known(name: str) -> dict | None:
+    """Address and map link of a place this server found earlier, by name."""
+    return _known.get(name)
 
 
 def _cached(key: tuple, fetch):
@@ -287,6 +301,7 @@ def _google_nearby(kind: str, lat: float, lng: float, radius: int, key: str) -> 
             continue
         address = place.get("shortFormattedAddress") or place.get("formattedAddress") or ""
         rating = place.get("rating")
+        reviews = place.get("userRatingCount") or 0
         found.append(
             {
                 "id": f"google:{place.get('id', name)}",
@@ -298,6 +313,8 @@ def _google_nearby(kind: str, lat: float, lng: float, radius: int, key: str) -> 
                 "rating": f"{rating:.1f}" if isinstance(rating, (int, float)) else "",
                 "map_url": place.get("googleMapsUri") or maps_url(location["latitude"], location["longitude"], name, address),
                 "periods": _google_periods(place.get("regularOpeningHours")),
+                # Google confirmed it is operating; reviews show people actually go there.
+                "quality": 3 + (reviews >= 20),
                 "source": "Google Maps",
             }
         )
@@ -305,7 +322,9 @@ def _google_nearby(kind: str, lat: float, lng: float, radius: int, key: str) -> 
 
 
 def _osm_address(details: dict) -> str:
-    street = " ".join(part for part in (details.get("house_number"), details.get("road")) if part)
+    road = details.get("road") or details.get("pedestrian") or details.get("footway") or ""
+    # A street number alone ("2730") is not an address, so it needs its street.
+    street = f"{details['house_number']} {road}" if road and details.get("house_number") else road
     city = details.get("city") or details.get("town") or details.get("village") or ""
     return ", ".join(part for part in (street, city) if part)
 
@@ -330,8 +349,17 @@ def _osm_nearby(kind: str, lat: float, lng: float, radius: int) -> list[dict]:
         name = (row.get("name") or "").strip()
         if not name:
             continue
+        details, tags = row.get("address") or {}, row.get("extratags") or {}
+        quality = (
+            bool(details.get("house_number"))
+            + 2 * bool(tags.get("opening_hours"))
+            + any(tags.get(tag) for tag in OSM_CONTACT_TAGS)
+            + any(tags.get(tag) for tag in OSM_CHECK_TAGS)
+        )
+        if not quality:
+            continue
         place_lat, place_lng = float(row["lat"]), float(row["lon"])
-        address = _osm_address(row.get("address") or {})
+        address = _osm_address(details)
         found.append(
             {
                 "id": f"osm:{row.get('osm_type', '')}{row.get('osm_id', name)}",
@@ -342,7 +370,8 @@ def _osm_nearby(kind: str, lat: float, lng: float, radius: int) -> list[dict]:
                 "lng": place_lng,
                 "rating": "",
                 "map_url": maps_url(place_lat, place_lng, name, address),
-                "periods": osm_periods((row.get("extratags") or {}).get("opening_hours", "")),
+                "periods": osm_periods(tags.get("opening_hours", "")),
+                "quality": quality,
                 "source": "OpenStreetMap",
             }
         )
@@ -368,4 +397,12 @@ def nearby(kind: str, lat: float, lng: float, radius: int) -> list[dict]:
     except PlacesError:
         return []
     inside = [place for place in found if meters(lat, lng, place["lat"], place["lng"]) <= radius]
+    for place in inside:
+        _known[place["name"]] = {"address": place["address"], "map_url": place["map_url"]}
     return sorted(inside, key=lambda place: meters(lat, lng, place["lat"], place["lng"]))
+
+
+def best(kind: str, lat: float, lng: float, radius: int) -> dict | None:
+    """The best-documented real place of a kind nearby; nearer wins a tie."""
+    found = nearby(kind, lat, lng, radius)
+    return max(found, key=lambda place: (place.get("quality", 0), -meters(lat, lng, place["lat"], place["lng"])), default=None)

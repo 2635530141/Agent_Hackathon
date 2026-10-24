@@ -278,3 +278,46 @@ def test_new_rooms_are_named_after_a_real_nearby_place(monkeypatch):
     monkeypatch.setattr(session.live_places, "nearby", lambda kind, lat, lng, radius: [REAL[0]] if kind == "library" else [])
     assert session._place_name("library", "") == "Late Library"
     assert session._place_name("outdoor", "") == "Faculty Glade"  # Nothing real found: seeded fallback.
+
+
+# Place quality
+
+
+def test_undocumented_openstreetmap_entries_are_dropped(online):
+    rows = [
+        {"category": "leisure", "type": "park", "name": "Dwight Triangle", "lat": "37.8680", "lon": "-122.2600",
+         "osm_type": "way", "osm_id": 1, "address": {"road": "Dwight Way"}, "extratags": {"access": "yes"}},
+        {"category": "leisure", "type": "park", "name": "Willard Park", "lat": "37.8640", "lon": "-122.2560",
+         "osm_type": "way", "osm_id": 2, "address": {"house_number": "2730", "road": "Hillegass Ave"},
+         "extratags": {"opening_hours": "Mo-Su 06:00-22:00", "website": "https://example.org"}},
+    ]
+    online.setattr(places.httpx, "get", lambda *a, **k: Reply(rows))
+    found = places.nearby("outdoor", 37.8678, -122.2600, 1500)
+    assert [place["name"] for place in found] == ["Willard Park"]
+    assert found[0]["quality"] == 4
+
+
+def test_best_prefers_a_documented_place_over_the_nearest(monkeypatch):
+    near = {**REAL[2], "name": "Tiny Stand", "quality": 1, "lat": 37.8678, "lng": -122.2600}
+    documented = {**REAL[1], "name": "Real Cafe", "quality": 4, "lat": 37.8700, "lng": -122.2600}
+    monkeypatch.setattr(places, "nearby", lambda kind, lat, lng, radius: [near, documented])
+    assert places.best("coffee", 37.8678, -122.2600, 1500)["name"] == "Real Cafe"
+
+
+def test_room_cards_show_address_and_map_link(monkeypatch, online):
+    from app.routers import session
+
+    rows = [{"category": "amenity", "type": "cafe", "name": "Sweetheart Cafe", "lat": "37.8670", "lon": "-122.2560",
+             "osm_type": "node", "osm_id": 9, "address": {"house_number": "2523", "road": "Durant Avenue", "city": "Berkeley"},
+             "extratags": {"opening_hours": "Mo-Su 11:00-26:00"}}]
+    online.setattr(places.httpx, "get", lambda *a, **k: Reply(rows))
+    assert session._place_name("coffee", "") == "Sweetheart Cafe"
+    details = session.place_details("Sweetheart Cafe")
+    assert details["address"] == "2523 Durant Avenue, Berkeley"
+    assert details["map_url"].startswith("https://www.google.com/maps/search/")
+    assert session.place_details("Doe Library")["address"] == "Campus"  # Seeded rooms still get details.
+
+
+def test_street_number_without_a_street_is_left_out():
+    assert places._osm_address({"house_number": "2730", "city": "Berkeley"}) == "Berkeley"
+    assert places._osm_address({"house_number": "2523", "road": "Durant Avenue", "city": "Berkeley"}) == "2523 Durant Avenue, Berkeley"

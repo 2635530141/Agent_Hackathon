@@ -17,6 +17,9 @@
         <div class="room-head">
           <div>
             <h3>{{ room.place_name }}</h3>
+            {% if room.place and room.place.map_url %}
+            <p class="hint">{% if room.place.address %}{{ room.place.address }} · {% endif %}<a href="{{ room.place.map_url }}" target="_blank" rel="noopener">View on Google Maps</a></p>
+            {% endif %}
             <p>{{ room.course_code }} · {{ room.when }} · room for {{ room.capacity }}</p>
           </div>
           <span class="chip">{% if room.full %}Full{% else %}{{ room.open_seats }} open{% endif %}</span>
@@ -63,10 +66,14 @@
   <form method="post" action="/session/rooms" class="card room-create stack">
     <div>
       <h3>Or open your own</h3>
+      {% set details = new_place_details | default({}) %}
       {% if anytime %}
       <p>{{ new_place }}. Choose the time yourself. You become the host, not a guest in someone else's room.</p>
       {% else %}
       <p>{{ new_place }} · {{ asked_when }}</p>
+      {% if details.map_url %}
+      <p class="hint">{% if details.address %}{{ details.address }} · {% endif %}<a href="{{ details.map_url }}" target="_blank" rel="noopener">View on Google Maps</a></p>
+      {% endif %}
       <p class="hint">A room for {{ group_size }}. You take the first seat.</p>
       {% endif %}
     </div>

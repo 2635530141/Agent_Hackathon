@@ -4,31 +4,43 @@
 <div class="stack-lg">
   <div class="stack">
     <h1 class="title">Study invite</h1>
-    <p class="lede">This is the invited student's page. It shows the course, time, and place. It does not show the organizer's calendar.</p>
+    <p class="lede">This page is for one invited student. It shows the course, time, place, and the message that was approved. It does not show anyone's calendar.</p>
   </div>
-  {% if not known %}
+  {% if index %}
+    {% if invites %}
+    <ul class="busy-list">
+      {% for item in invites %}
+      <li class="busy-row">
+        <a href="/invite/{{ item.id }}">{{ item.first_name }}</a>
+        <span class="chip">{{ item.status }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="callout"><p>No invite has been sent yet. Approve a proposal on the session page first.</p></div>
+    {% endif %}
+  {% elif not invitation %}
   <div class="callout warn"><p>This invite is not in the demo store.</p></div>
-  {% elif invitation.status == "draft" %}
-  <div class="callout"><p>The organizer has not sent this invite yet.</p></div>
   {% else %}
   <article class="card stack">
     <div class="person">
-      <strong>{{ course.code }}</strong>
-      <span class="meta">{{ course.name }}</span>
+      <strong>{{ invitation.first_name }}</strong>
+      <span class="meta">{{ invitation.course_code }} · {{ invitation.course_name }}</span>
     </div>
     <p>{{ when }}</p>
-    <p>{{ place_name }}</p>
+    <p>{{ invitation.place_name }}</p>
+    <p>{{ invitation.message }}</p>
     {% if invitation.status == "pending" %}
     <div class="cluster">
-      <form method="post" action="/invite/{{ invitation_id }}/accept">
+      <form method="post" action="/invite/{{ invitation.id }}/accept">
         <button class="button primary" type="submit">Accept</button>
       </form>
-      <form method="post" action="/invite/{{ invitation_id }}/decline">
+      <form method="post" action="/invite/{{ invitation.id }}/decline">
         <button class="button danger" type="submit">Decline</button>
       </form>
     </div>
     {% elif invitation.status == "accepted" %}
-    <div class="callout good"><p>You accepted. The organizer can add it to their calendar.</p></div>
+    <div class="callout good"><p>You accepted. The organizer can add it to their calendar after everyone accepts.</p></div>
     {% else %}
     <div class="callout warn"><p>You declined.</p></div>
     {% endif %}

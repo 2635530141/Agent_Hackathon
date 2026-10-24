@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 
 from app import matching_core, schedule_core, store
 from app.format import pretty_range
-from app.profile_core import PLACE_LABELS
+from app.profile_core import PLACE_LABELS, public_profile
 from app.web import render
 
 router = APIRouter()
@@ -27,8 +27,16 @@ def _query(course_id: str, starts_at: str, ends_at: str, place_type: str, note: 
     )
 
 
+def _profile_courses() -> list[dict]:
+    owned = set(public_profile().course_ids)
+    return [course for course in store.courses() if course["id"] in owned]
+
+
 def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool):
-    course = store.course_by_id(course_id) or store.courses()[0]
+    catalog = _profile_courses() or store.courses()
+    if course_id not in {course["id"] for course in catalog}:
+        course_id = catalog[0]["id"]
+    course = store.course_by_id(course_id) or catalog[0]
     error = ""
     conflict = None
     try:
@@ -43,10 +51,9 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
             when = pretty_range(proposal.starts_at, proposal.ends_at)
         except matching_core.NoMatch as exc:
             error = str(exc)
-    invitation = store.invitation()
     return {
         "course": course,
-        "courses": store.courses(),
+        "courses": catalog,
         "starts_at": starts_at,
         "ends_at": ends_at,
         "place_type": place_type,
@@ -73,7 +80,10 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
         "anyway_href": "/session?" + _query(course["id"], starts_at, ends_at, place_type, note, True),
         "proposal": proposal,
         "when": when,
-        "invitation": invitation,
+        "invites": store.latest_invitations(),
+        "all_accepted": store.batch_all_accepted(),
+        "declined_names": store.declined_names(),
+        "calendar_written": store.calendar_event_written(),
         "keep": _query(course["id"], starts_at, ends_at, place_type, note, study_anyway),
     }
 
@@ -167,16 +177,46 @@ def confirm_invite(
     study_anyway: str = Form("0"),
     invite: str = Form(""),
 ):
+    catalog = _profile_courses() or store.courses()
+    course = next((item for item in catalog if item["id"] == course_id), catalog[0])
+    try:
+        conflict = schedule_core.own_conflict(starts_at, ends_at, study_anyway == "1")
+    except ValueError:
+        conflict = {"title": "That time"}
+    if conflict:
+        return _redirect_session(
+            course["id"],
+            starts_at,
+            ends_at,
+            place_type,
+            note,
+            study_anyway,
+            "Pick another time, or study anyway, before sending.",
+        )
     store.set_invite_text(invite)
-    course = store.course_by_id(course_id) or store.courses()[0]
     try:
         proposal = matching_core.build_proposal(
             course["code"], starts_at, ends_at, place_type, note, study_anyway == "1"
         )
     except matching_core.NoMatch as exc:
-        return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, str(exc))
-    store.set_invitation_details(course["id"], proposal.starts_at, proposal.ends_at, proposal.place.name)
-    store.set_invitation_status("pending")
+        return _redirect_session(course["id"], starts_at, ends_at, place_type, note, study_anyway, str(exc))
+    message = invite.strip() or proposal.invite
+    store.create_invitations(
+        [
+            {
+                "person_id": person.id,
+                "first_name": person.first_name,
+                "course_id": course["id"],
+                "course_code": course["code"],
+                "course_name": course["name"],
+                "starts_at": proposal.starts_at,
+                "ends_at": proposal.ends_at,
+                "place_name": proposal.place.name,
+                "message": message,
+            }
+            for person in proposal.people
+        ]
+    )
     return _redirect_session(
         course_id,
         starts_at,
@@ -197,40 +237,48 @@ def add_to_calendar(
     note: str = Form(""),
     study_anyway: str = Form("1"),
 ):
-    if store.invitation()["status"] == "accepted":
-        store.write_calendar_event()
+    if store.write_calendar_event():
         notice = "Saved to the organizer's calendar in this demo. Google write is not connected."
     else:
-        notice = "Both people have to accept before the session goes on the calendar."
+        notice = "Everyone has to accept before the session goes on the calendar."
     return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, notice)
 
 
-@router.get("/invite/{invitation_id}")
-def invite_page(request: Request, invitation_id: str):
-    invitation = store.invitation()
-    course = store.course_by_id(invitation["course_id"]) or store.courses()[0]
+@router.get("/invite")
+def invite_index(request: Request):
     return render(
         request,
         "invite.html",
         nav="invite",
+        index=True,
+        invites=store.latest_invitations(),
+    )
+
+
+@router.get("/invite/{invitation_id}")
+def invite_page(request: Request, invitation_id: str):
+    invitation = store.invitation_by_id(invitation_id)
+    when = ""
+    if invitation:
+        when = pretty_range(invitation["starts_at"], invitation["ends_at"])
+    return render(
+        request,
+        "invite.html",
+        nav="invite",
+        index=False,
         invitation_id=invitation_id,
         invitation=invitation,
-        course=course,
-        place_name=invitation["place_name"],
-        when=pretty_range(invitation["starts_at"], invitation["ends_at"]),
-        known=invitation_id == invitation["id"],
+        when=when,
     )
 
 
 @router.post("/invite/{invitation_id}/accept")
 def accept_invite(invitation_id: str):
-    if invitation_id == store.invitation()["id"] and store.invitation()["status"] == "pending":
-        store.set_invitation_status("accepted")
+    store.set_person_status(invitation_id, "accepted")
     return RedirectResponse(f"/invite/{invitation_id}", status_code=303)
 
 
 @router.post("/invite/{invitation_id}/decline")
 def decline_invite(invitation_id: str):
-    if invitation_id == store.invitation()["id"] and store.invitation()["status"] == "pending":
-        store.set_invitation_status("declined")
+    store.set_person_status(invitation_id, "declined")
     return RedirectResponse(f"/invite/{invitation_id}", status_code=303)

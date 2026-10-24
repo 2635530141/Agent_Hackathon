@@ -67,14 +67,24 @@
     {% endwith %}
   {% endif %}
 
-  {% if invitation.status == "pending" %}
-  <p class="hint">Invitation sent. The invited student can answer at <a href="/invite/demo">/invite/demo</a>.</p>
-  {% elif invitation.status == "accepted" %}
-  <div class="callout good">
-    <p>They accepted {{ invitation.place_name }}.</p>
-    {% if invitation.calendar_written %}
-    <p>The session is marked on your calendar for this demo.</p>
-    {% else %}
+  {% if invites %}
+  <section class="card stack">
+    <h2>Invitations</h2>
+    <p class="hint">Each link is that student's invite. Nothing is emailed in this demo.</p>
+    <ul class="busy-list">
+      {% for item in invites %}
+      <li class="busy-row">
+        <a href="/invite/{{ item.id }}">{{ item.first_name }}</a>
+        <span class="chip">{{ item.status }}</span>
+        <span class="meta">{{ item.place_name }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if declined_names %}
+    <div class="callout warn"><p>{{ declined_names | join(", ") }} declined. The session stays off the calendar.</p></div>
+    {% elif all_accepted and calendar_written %}
+    <div class="callout good"><p>The session is marked on your calendar for this demo.</p></div>
+    {% elif all_accepted %}
     <form method="post" action="/session/calendar">
       <input type="hidden" name="course_id" value="{{ course.id }}">
       <input type="hidden" name="starts_at" value="{{ starts_at }}">
@@ -84,10 +94,10 @@
       <input type="hidden" name="study_anyway" value="{{ '1' if study_anyway else '0' }}">
       <button class="button" type="submit">Add to my calendar</button>
     </form>
+    {% else %}
+    <p class="hint">Add to my calendar appears after everyone accepts.</p>
     {% endif %}
-  </div>
-  {% elif invitation.status == "declined" %}
-  <div class="callout warn"><p>They declined. Start again with another time.</p></div>
+  </section>
   {% endif %}
 </div>
 {% endblock %}

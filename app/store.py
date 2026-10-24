@@ -246,15 +246,9 @@ _student_busy = {
 _person_index = 0
 _place_index = 0
 _invite = "Want to work through CS 61A problem sets at Yali's Cafe on Thursday at 7?"
-_invitation = {
-    "id": "demo",
-    "status": "draft",
-    "calendar_written": False,
-    "course_id": "cs61a",
-    "starts_at": "2026-10-29T19:00",
-    "ends_at": "2026-10-29T21:00",
-    "place_name": "Yali's Cafe",
-}
+_invitations: dict[str, dict] = {}
+_latest_batch_ids: list[str] = []
+_calendar_written = False
 _calendar_connected = False
 _draft = {"key": "", "texts": []}
 _swap_key = ""
@@ -391,25 +385,55 @@ def remember_draft(key: str, text: str) -> None:
     _draft["texts"].append(text)
 
 
-def invitation() -> dict:
-    return deepcopy(_invitation)
+def create_invitations(records: list[dict]) -> list[dict]:
+    """Freeze one pending invite per person. Later edits do not change these rows."""
+    global _calendar_written
+    created = []
+    ids = []
+    for record in records:
+        item = {"id": next_id("inv"), "status": "pending", **record}
+        _invitations[item["id"]] = item
+        ids.append(item["id"])
+        created.append(deepcopy(item))
+    _latest_batch_ids[:] = ids
+    _calendar_written = False
+    return created
 
 
-def set_invitation_status(status: str) -> None:
-    _invitation["status"] = status
-    if status != "accepted":
-        _invitation["calendar_written"] = False
+def latest_invitations() -> list[dict]:
+    return [deepcopy(_invitations[item_id]) for item_id in _latest_batch_ids]
 
 
-def set_invitation_details(course_id: str, starts_at: str, ends_at: str, place_name: str) -> None:
-    _invitation["course_id"] = course_id
-    _invitation["starts_at"] = starts_at
-    _invitation["ends_at"] = ends_at
-    _invitation["place_name"] = place_name
+def invitation_by_id(invitation_id: str) -> dict | None:
+    item = _invitations.get(invitation_id)
+    return deepcopy(item) if item else None
 
 
-def write_calendar_event() -> None:
-    _invitation["calendar_written"] = True
+def set_person_status(invitation_id: str, status: str) -> None:
+    item = _invitations.get(invitation_id)
+    if item and item["status"] == "pending" and status in ("accepted", "declined"):
+        item["status"] = status
+
+
+def batch_all_accepted() -> bool:
+    items = latest_invitations()
+    return bool(items) and all(item["status"] == "accepted" for item in items)
+
+
+def declined_names() -> list[str]:
+    return [item["first_name"] for item in latest_invitations() if item["status"] == "declined"]
+
+
+def calendar_event_written() -> bool:
+    return _calendar_written
+
+
+def write_calendar_event() -> bool:
+    global _calendar_written
+    if not batch_all_accepted():
+        return False
+    _calendar_written = True
+    return True
 
 
 def calendar_connected() -> bool:

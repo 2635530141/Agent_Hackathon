@@ -14,6 +14,13 @@ DEFAULT_START = "2026-10-29T18:00"
 DEFAULT_END = "2026-10-29T21:00"
 
 
+def _local_form_value(value: str) -> str:
+    try:
+        return schedule_core.parse_time(value).replace(tzinfo=None).isoformat(timespec="minutes")
+    except ValueError:
+        return ""
+
+
 def _query(course_id: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool) -> str:
     return urlencode(
         {
@@ -56,6 +63,8 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
         "courses": catalog,
         "starts_at": starts_at,
         "ends_at": ends_at,
+        "form_starts_at": _local_form_value(starts_at),
+        "form_ends_at": _local_form_value(ends_at),
         "place_type": place_type,
         "place_labels": PLACE_LABELS,
         "note": note,
@@ -64,7 +73,7 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
         "conflict": conflict,
         "conflict_when": pretty_range(starts_at, ends_at) if conflict else "",
         "alternative_label": pretty_range(conflict["alternative_start"], conflict["alternative_end"])
-        if conflict
+        if conflict and conflict.get("alternative_start")
         else "",
         "alternative_href": "/session?"
         + _query(
@@ -75,7 +84,7 @@ def _session_context(course_id: str, starts_at: str, ends_at: str, place_type: s
             note,
             False,
         )
-        if conflict
+        if conflict and conflict.get("alternative_start")
         else "",
         "anyway_href": "/session?" + _query(course["id"], starts_at, ends_at, place_type, note, True),
         "proposal": proposal,

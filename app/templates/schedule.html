@@ -4,7 +4,8 @@
 <div class="stack-lg">
   <div class="stack">
     <h1 class="title">Schedule and calendar</h1>
-    <p class="lede">Shulun owns this page. Weekly hours are when you can study. Exams and calendar events block a session. Matching receives the blocks without titles.</p>
+    <p class="lede">Set your study hours, add exams, and check when you are free. All times use America/Los_Angeles.</p>
+    <p class="hint">Demo with synthetic data. Changes are kept while this server runs and reset when it restarts. No Google account is connected.</p>
   </div>
   {% if error %}
   <div class="callout warn"><p>{{ error }}</p></div>
@@ -12,6 +13,20 @@
   {% if saved %}
   <div class="callout good"><p>Saved.</p></div>
   {% endif %}
+
+  <section class="card stack">
+    <h2>Your available time</h2>
+    <p class="hint">Weekly hours and extra free time, with exams and busy blocks removed. Choose a window of up to 14 days.</p>
+    <form method="get" action="/schedule" class="split">
+      <label class="field"><span class="label">Window starts</span><input type="datetime-local" name="starts_at" value="{{ preview_start }}"></label>
+      <label class="field"><span class="label">Window ends</span><input type="datetime-local" name="ends_at" value="{{ preview_end }}"></label>
+      <div class="cluster"><button class="button" type="submit">Check available time</button></div>
+    </form>
+    <ul class="busy-list">
+      {% for slot in available %}<li class="busy-row"><span>{{ slot.when }}</span><span class="chip">Free</span></li>
+      {% else %}<li class="busy-row">No available time in this window.</li>{% endfor %}
+    </ul>
+  </section>
 
   <form method="post" action="/schedule/hours" class="card stack">
     <h2>Weekly hours</h2>
@@ -95,13 +110,10 @@
     <div class="card stack">
       <h2>Your busy times</h2>
       <p class="hint">Titles stay on this page.</p>
-      {% if calendar.connected %}
-      <div class="callout good"><p>Calendar marked connected for this demo. Google is not reading a real account. Horizon: {{ calendar.horizon }}.</p></div>
-      {% else %}
+      <p class="hint">The calendar event below is a synthetic example. Real Google access needs account authorization.</p>
       <form method="post" action="/schedule/calendar">
-        <button class="button" type="submit">Connect Google Calendar</button>
+        <button class="button" type="submit">Check Google Calendar setup</button>
       </form>
-      {% endif %}
       <ul class="busy-list">
         {% for block in blocks %}
         <li class="busy-row">

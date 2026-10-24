@@ -2,8 +2,14 @@
   <p><strong>You're busy then.</strong> {{ conflict.title }} overlaps this session. This is your event, and it stays on this page.</p>
   <div class="cluster">
     {% if interactive %}
+    {% if alternative_href %}
     <a class="button primary" href="{{ alternative_href }}">Use {{ alternative_label }}</a>
+    {% else %}
+    <p>No complete alternative was found in the next 14 days. Try a shorter session or update your hours.</p>
+    {% endif %}
+    {% if conflict.can_study_anyway %}
     <a class="button quiet" href="{{ anyway_href }}">Study anyway</a>
+    {% endif %}
     {% else %}
     <button class="button primary" type="button">Use Thu 29 Oct, 7:00–9:00 PM</button>
     <button class="button quiet" type="button">Study anyway</button>

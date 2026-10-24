@@ -1,6 +1,6 @@
 from urllib.parse import quote
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from app import schedule_core, store
@@ -10,7 +10,14 @@ from app.web import render
 router = APIRouter()
 
 
-def _page(request: Request, error: str = "", saved: str = ""):
+def _page(request: Request, error: str = "", saved: str = "",
+          starts_at: str = "2026-10-29T16:00", ends_at: str = "2026-10-29T21:00"):
+    available = []
+    try:
+        available = [{**slot, "when": pretty_range(slot["starts_at"], slot["ends_at"])}
+                     for slot in schedule_core.availability(starts_at, ends_at)]
+    except ValueError as exc:
+        error = error or str(exc)
     blocks = []
     for block in schedule_core.list_busy():
         item = block.model_dump()
@@ -48,12 +55,16 @@ def _page(request: Request, error: str = "", saved: str = ""):
         calendar=schedule_core.calendar_status(),
         error=error,
         saved=saved,
+        available=available,
+        preview_start=starts_at,
+        preview_end=ends_at,
     )
 
 
 @router.get("/schedule")
-def schedule_page(request: Request, error: str = "", saved: str = ""):
-    return _page(request, error, saved)
+def schedule_page(request: Request, error: str = "", saved: str = "",
+                  starts_at: str = "2026-10-29T16:00", ends_at: str = "2026-10-29T21:00"):
+    return _page(request, error, saved, starts_at, ends_at)
 
 
 @router.post("/schedule/hours")
@@ -110,8 +121,11 @@ def remove_exception(exception_id: str):
 
 @router.post("/schedule/calendar")
 def connect_calendar():
-    schedule_core.connect_calendar()
-    return RedirectResponse("/schedule?saved=calendar", status_code=303)
+    try:
+        schedule_core.connect_calendar()
+    except ValueError as exc:
+        return RedirectResponse(f"/schedule?error={quote(str(exc))}", status_code=303)
+    return RedirectResponse("/schedule", status_code=303)
 
 
 @router.get("/api/schedule/busy")
@@ -122,3 +136,12 @@ def api_owner_busy():
 @router.get("/api/schedule/busy/match")
 def api_match_busy():
     return schedule_core.list_busy_for_match()
+
+
+@router.get("/api/schedule/availability")
+def api_availability(starts_at: str, ends_at: str):
+    try:
+        return {"synthetic": True, "timezone": schedule_core.ZONE.key,
+                "available": schedule_core.availability(starts_at, ends_at)}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None

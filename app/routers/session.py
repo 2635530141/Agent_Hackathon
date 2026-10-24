@@ -55,6 +55,17 @@ _DAYS = {
     "thursday": 29,
     "friday": 30,
     "saturday": 31,
+    # Short forms people type. Each matches whole words only, so "wed" never matches "wednesday".
+    "sun": 25,
+    "mon": 26,
+    "tue": 27,
+    "tues": 27,
+    "wed": 28,
+    "thu": 29,
+    "thur": 29,
+    "thurs": 29,
+    "fri": 30,
+    "sat": 31,
 }
 _PARTS = {
     "morning": ("09:00", "12:00"),
@@ -265,7 +276,14 @@ def _course_from_text(text: str, courses: list[dict]) -> str | None:
             rf"\b{re.escape(compact)}\b", text, re.IGNORECASE
         ):
             return course["id"]
-    return _subject_request(text)
+    spoken = _subject_request(text)
+    if spoken:
+        return spoken
+    partial = _SPECIFIC_COURSE.search(text)
+    if partial and _family(partial.group(0)) in _SUBJECT_LABELS:
+        # "cs61" is not a catalog code (61A, 61B, ...), so keep its subject instead of dropping it.
+        return f"subject:{_family(partial.group(0))}"
+    return None
 
 
 def _mentioned_place(text: str) -> str:

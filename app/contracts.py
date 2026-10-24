@@ -46,6 +46,7 @@ class PublicProfile(BaseModel):
     major: str
     year: int = Field(ge=1, le=5)
     course_ids: list[str]
+    bio: str = ""
 
 
 class PrivateProfile(PublicProfile):

@@ -96,9 +96,13 @@ def test_half_open_adjacent_and_full_duration_alternative_checks_all_blocks():
     assert schedule_core.own_conflict("2026-10-26T15:00","2026-10-26T16:00",False) is None
     schedule_core.save_weekly({"mon":("13:00","20:00")})
     schedule_core.create_exception("2026-10-26T17:00","2026-10-26T17:30","busy")
-    conflict = schedule_core.own_conflict("2026-10-26T14:00","2026-10-26T15:30",False)
+    # The schedule page's check tool still offers the next full-length free slot.
+    conflict = schedule_core.own_conflict("2026-10-26T14:00","2026-10-26T15:30",False,within_window=False)
     assert (conflict["alternative_start"],conflict["alternative_end"]) == ("2026-10-26T17:30","2026-10-26T19:00")
     assert parse_instant(conflict["alternative_end"])-parse_instant(conflict["alternative_start"]) == timedelta(minutes=90)
+    # A study session never moves outside the requested window; nothing in it is free for an hour.
+    session = schedule_core.own_conflict("2026-10-26T14:00","2026-10-26T15:30",False)
+    assert session and (session["alternative_start"], session["alternative_end"]) == (None, None)
 
 
 def test_no_alternative_renders_without_crashing():

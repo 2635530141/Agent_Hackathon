@@ -10,6 +10,11 @@
 
   <div class="stack">
     <h2 class="section-title">Join a room</h2>
+    {% if ranking and ranking.reason %}
+    <p class="hint">{{ ranking.reason }}{% if ranking.near_tie %} It is a close call; compare the top rooms.{% endif %}</p>
+    {% elif ranking and ranking.errors %}
+    <p class="hint">Showing rooms by start time. The matching assistant could not rank them this time.</p>
+    {% endif %}
     {% if rooms %}
     <div class="rooms">
       {% for room in rooms %}
@@ -21,6 +26,9 @@
           </div>
           <span class="chip">{% if room.full %}Full{% else %}{{ room.open_seats }} open{% endif %}</span>
         </div>
+        {% if room.match %}
+        <p class="hint">{% if room.match.best %}<strong>Best match.</strong> {% endif %}{% if room.match.flagged %}Not recommended: the host's bio contains instructions to the assistant.{% else %}{{ room.match.why }}{% endif %}</p>
+        {% endif %}
         <ul class="attendees">
           {% for member in room.members %}
           <li>

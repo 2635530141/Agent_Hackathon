@@ -1,5 +1,4 @@
 /* Calendar-only layout; shared StudyMate pages keep their existing design. */
-body:has(.calendar-workspace) .site-header{padding:10px 20px;flex-direction:row;align-items:center}
 .page:has(.calendar-workspace){width:calc(100% - 32px);margin:12px auto}
 .calendar-page{display:flex;flex-direction:column;gap:12px}
 .calendar-page>.callout{padding:6px 12px;font-size:12px}
@@ -55,4 +54,4 @@ body:has(.calendar-workspace) .site-header{padding:10px 20px;flex-direction:row;
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 [hidden]{display:none!important}
 @media(max-width:900px){.calendar-toolbar{flex-wrap:wrap;gap:8px}.calendar-toolbar h2{font-size:20px;order:-1;flex-basis:100%}}
-@media(max-width:520px){body:has(.calendar-workspace) .site-header{padding:8px 12px;flex-wrap:wrap;gap:6px}.page:has(.calendar-workspace){width:calc(100% - 16px);margin:8px auto}.calendar-page{gap:8px}.calendar-toolbar{padding:8px 10px;gap:6px}.calendar-toolbar .cluster{gap:4px}.calendar-toolbar .button{font-size:11px;padding:5px 7px}.calendar-toolbar h2{font-size:20px}.calendar-toolbar select{min-width:60px;font-size:11px}.calendar-grid,.calendar-day-view .calendar-grid{grid-template-columns:38px repeat(7,minmax(0,1fr))}.calendar-day-view .calendar-grid{grid-template-columns:38px minmax(0,1fr)}.calendar-hours span{font-size:8px;right:4px}.calendar-zone{padding:5px 10px;font-size:10px}.calendar-day-heading span{font-size:8px}.cal-event{font-size:9px;padding:0 3px}.cal-kind-weekly button{font-size:8px}}
+@media(max-width:520px){.page:has(.calendar-workspace){width:calc(100% - 16px);margin:8px auto}.calendar-page{gap:8px}.calendar-toolbar{padding:8px 10px;gap:6px}.calendar-toolbar .cluster{gap:4px}.calendar-toolbar .button{font-size:11px;padding:5px 7px}.calendar-toolbar h2{font-size:20px}.calendar-toolbar select{min-width:60px;font-size:11px}.calendar-grid,.calendar-day-view .calendar-grid{grid-template-columns:38px repeat(7,minmax(0,1fr))}.calendar-day-view .calendar-grid{grid-template-columns:38px minmax(0,1fr)}.calendar-hours span{font-size:8px;right:4px}.calendar-zone{padding:5px 10px;font-size:10px}.calendar-day-heading span{font-size:8px}.cal-event{font-size:9px;padding:0 3px}.cal-kind-weekly button{font-size:8px}}

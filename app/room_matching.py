@@ -27,6 +27,21 @@ MIN_OVERLAP = timedelta(hours=1)
 WALK_METERS_PER_MINUTE = 80
 
 
+PLACE_WORDS = {"library": "a library", "coffee": "a cafe", "outdoor": "an open space"}
+STYLE_WORDS = {"quiet": "quiet focus", "talk": "talking problems through", "drill": "practice questions"}
+
+
+@dataclass
+class Asked:
+    """Factors the student named in this session. Each one is a hard boundary for rooms."""
+
+    place: str | None = None
+    avoid: set[str] = field(default_factory=set)
+    size: int | None = None
+    at_least: bool = False
+    style: str | None = None
+
+
 @dataclass
 class RoomRanking:
     """The model's order for the board. Empty `order` means show the board as it was."""
@@ -54,6 +69,10 @@ def _place(room: dict) -> dict | None:
 
 
 def _course_code(course_id: str) -> str:
+    if course_id.startswith("subject:"):
+        from app.routers.session import _course_record  # A subject's label lives with the session's subjects.
+
+        return _course_record(course_id)["code"]
     found = store.course_by_id(course_id)
     return found["code"] if found else course_id
 
@@ -122,6 +141,59 @@ def room_facts(room: dict, start: datetime, end: datetime) -> dict | None:
             "members": [{"first_name": m["first_name"], "major": m["major"], "year": m["year"]} for m in room["members"]],
         },
     }
+
+
+def _host_styles(room: dict) -> list[str] | None:
+    host = public_profile_of(room["host_id"])
+    return None if host is None else list(host.study_styles)
+
+
+def meets(room: dict, asked: Asked) -> bool:
+    """Every factor the student named must hold. A host with no style preference fits any style."""
+    if asked.place and room["place_type"] != asked.place:
+        return False
+    if room["place_type"] in asked.avoid:
+        return False
+    if asked.size and (room["capacity"] < asked.size if asked.at_least else room["capacity"] != asked.size):
+        return False
+    if asked.style:
+        styles = _host_styles(room)
+        if styles is None or (styles and asked.style not in styles):
+            return False
+    return True
+
+
+def hard_filter(rooms: list[dict], asked: Asked, user_id: str) -> list[dict]:
+    """Rooms the student is already in stay visible; every other room must meet what they asked."""
+    return [room for room in rooms if room.get("joined") or room["host_id"] == user_id or meets(room, asked)]
+
+
+def reasons(room: dict, asked: Asked, course_label: str, asked_when: str | None) -> list[str]:
+    """Why this room is a match, one line per factor, from facts rather than the model."""
+    lines = []
+    if asked_when:
+        lines.append(f"Fits your time: {room['clock_label'] or room['when']}, inside {asked_when}.")
+    if room["course_code"] == course_label:
+        lines.append(f"{course_label}, as you asked.")
+    elif room["course_id"] == "subject:any":
+        lines.append(f"Open to any subject, so {course_label} is welcome.")
+    elif course_label == "Any subject":
+        lines.append(f"{room['course_code']}; you are open to any subject.")
+    else:
+        lines.append(f"{room['course_code']} covers {course_label}.")
+    if asked.place:
+        lines.append(f"{room['place_name']} is {PLACE_WORDS[asked.place]}, as you asked.")
+    if asked.avoid:
+        lines.append(f"Not {' or '.join(PLACE_WORDS[kind] for kind in sorted(asked.avoid))}, as you asked.")
+    if asked.size:
+        lines.append(f"A room for {room['capacity']}, as you asked.")
+    if asked.style:
+        styles = _host_styles(room) or []
+        lines.append(f"The host studies by {STYLE_WORDS[asked.style]}." if styles else
+                     f"The host has no style preference, so {STYLE_WORDS[asked.style]} works.")
+    if not room.get("full"):
+        lines.append(f"{room['open_seats']} seat{'s' if room['open_seats'] != 1 else ''} open.")
+    return lines
 
 
 def candidates(rooms: list[dict], user_id: str, starts_at: str, ends_at: str) -> list[dict]:

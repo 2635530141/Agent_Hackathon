@@ -443,3 +443,116 @@ def calendar_connected() -> bool:
 def set_calendar_connected(connected: bool) -> None:
     global _calendar_connected
     _calendar_connected = connected
+
+
+_rooms = [
+    {
+        "id": "room_doe_thu",
+        "host_id": "u_jordan",
+        "course_id": "subject:cs",
+        "course_code": "Any CS course",
+        "starts_at": "2026-10-29T19:00",
+        "ends_at": "2026-10-29T21:00",
+        "place_type": "library",
+        "place_name": "Doe Library",
+        "capacity": 4,
+        "members": [
+            {"id": "u_jordan", "first_name": "Jordan", "major": "EECS", "year": 3},
+            {"id": "u_sam", "first_name": "Sam", "major": "Mathematics", "year": 2},
+        ],
+    },
+    {
+        "id": "room_yali_thu",
+        "host_id": "u_leo",
+        "course_id": "cs61a",
+        "course_code": "CS 61A",
+        "starts_at": "2026-10-29T18:00",
+        "ends_at": "2026-10-29T20:00",
+        "place_type": "coffee",
+        "place_name": "Yali's Cafe",
+        "capacity": 2,
+        "members": [
+            {"id": "u_leo", "first_name": "Leo", "major": "Data Science", "year": 1},
+        ],
+    },
+    {
+        "id": "room_doe_wed",
+        "host_id": "u_priya",
+        "course_id": "subject:cs",
+        "course_code": "Any CS course",
+        "starts_at": "2026-10-28T19:00",
+        "ends_at": "2026-10-28T21:00",
+        "place_type": "library",
+        "place_name": "Doe Library",
+        "capacity": 3,
+        "members": [
+            {"id": "u_priya", "first_name": "Priya", "major": "EECS", "year": 3},
+        ],
+    },
+]
+
+
+def rooms() -> list[dict]:
+    return deepcopy(_rooms)
+
+
+def create_room(
+    host: dict,
+    course_id: str,
+    course_code: str,
+    starts_at: str,
+    ends_at: str,
+    place_type: str,
+    place_name: str,
+    capacity: int,
+) -> dict:
+    """Open a room and put the host in the first seat. The same host and slot is reused."""
+    for room in _rooms:
+        if (
+            room["host_id"] == host["id"]
+            and room["course_id"] == course_id
+            and room["starts_at"] == starts_at
+            and room["ends_at"] == ends_at
+            and room["place_name"] == place_name
+        ):
+            return deepcopy(room)
+    room = {
+        "id": next_id("room"),
+        "host_id": host["id"],
+        "course_id": course_id,
+        "course_code": course_code,
+        "starts_at": starts_at,
+        "ends_at": ends_at,
+        "place_type": place_type,
+        "place_name": place_name,
+        "capacity": max(2, min(4, capacity)),
+        "members": [host],
+    }
+    _rooms.append(room)
+    return deepcopy(room)
+
+
+def join_room(room_id: str, member: dict) -> str:
+    room = next((item for item in _rooms if item["id"] == room_id), None)
+    if room is None:
+        return "missing"
+    if any(person["id"] == member["id"] for person in room["members"]):
+        return "already"
+    if len(room["members"]) >= room["capacity"]:
+        return "full"
+    room["members"].append(member)
+    return "joined"
+
+
+def leave_room(room_id: str, user_id: str) -> str:
+    room = next((item for item in _rooms if item["id"] == room_id), None)
+    if room is None:
+        return "missing"
+    kept = [person for person in room["members"] if person["id"] != user_id]
+    if len(kept) == len(room["members"]):
+        return "missing"
+    if not kept:
+        _rooms.remove(room)
+        return "closed"
+    room["members"] = kept
+    return "left"

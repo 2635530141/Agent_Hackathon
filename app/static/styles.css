@@ -136,6 +136,30 @@ code {
   align-items: start;
 }
 
+.thread {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.thread li {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--bg-elevated);
+}
+
+.thread p {
+  margin: 0;
+}
+
+.thread-assistant {
+  background: var(--accent-soft);
+}
+
 .title {
   margin: 0;
   font-size: 36px;
@@ -176,6 +200,99 @@ code {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 16px;
+}
+
+.rooms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.schedule {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.schedule-day {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 160px;
+}
+
+.schedule-day h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.schedule-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: inherit;
+  text-decoration: none;
+}
+
+.schedule-block.is-open {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+}
+
+.schedule-block strong {
+  font-size: 14px;
+}
+
+.room-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.room-head h3,
+.room-head p,
+.room-create h3,
+.room-create p {
+  margin: 0;
+}
+
+.room-create {
+  background: var(--accent-soft);
+}
+
+.attendees {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.attendees li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  row-gap: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.attendees strong {
+  font-size: 16px;
+}
+
+.attendees li span:first-of-type {
+  justify-self: end;
+  font-weight: 600;
 }
 
 .card h2,
@@ -492,5 +609,9 @@ textarea {
 
   .title {
     font-size: 32px;
+  }
+
+  .schedule {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

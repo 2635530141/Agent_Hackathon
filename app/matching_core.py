@@ -369,7 +369,32 @@ def score(me: Person, other: Person, request: StudyRequest, free: list[Interval]
 
 
 def _course_code(course_id: str) -> str:
+    if course_id.startswith("subject:"):
+        return {"cs": "CS", "math": "Math"}.get(course_id.split(":", 1)[1], course_id.split(":", 1)[1].upper())
     return next((course["code"] for course in courses() if course["id"] == course_id), course_id)
+
+
+def _topic(course_id: str) -> str:
+    code = _course_code(course_id)
+    if course_id.startswith("subject:"):
+        return f"a {code} course"
+    return code
+
+
+def _takes(person: Person, course_id: str) -> bool:
+    if not course_id.startswith("subject:"):
+        return course_id in person.profile.course_ids
+    key = course_id.split(":", 1)[1]
+    for owned in person.profile.course_ids:
+        label = _course_code(owned).lower().replace(" ", "")
+        if label.startswith(key) or owned.lower().startswith(key):
+            return True
+    major = person.profile.major.lower()
+    if key == "cs":
+        return bool(re.search(r"\b(?:cs|eecs|computer)\b", major))
+    if key == "math":
+        return "math" in major
+    return False
 
 
 def find_matches(request: StudyRequest, inputs: Inputs) -> tuple[list[Candidate], list[tuple[str, int]], bool, str]:
@@ -380,13 +405,13 @@ def find_matches(request: StudyRequest, inputs: Inputs) -> tuple[list[Candidate]
     there is nobody at all.
     """
     me = inputs.me
-    code = _course_code(request.course_id)
+    topic = _topic(request.course_id)
     start, end = _parse(request.starts_at), _parse(request.ends_at)
     min_len = min(MIN_OVERLAP, end - start)
 
     eligible = set(inputs.eligible_ids)
     pool = [person for person in inputs.people if person.profile.id in eligible and person.profile.id != me.profile.id]
-    course = [person for person in pool if request.course_id in person.profile.course_ids]
+    course = [person for person in pool if _takes(person, request.course_id)]
     reach = [
         person
         for person in course
@@ -402,7 +427,7 @@ def find_matches(request: StudyRequest, inputs: Inputs) -> tuple[list[Candidate]
             ranked.append(score(me, person, request, free))
     funnel = [
         ("eligible", len(pool)),
-        (f"take {code}", len(course)),
+        (f"take {topic}", len(course)),
         ("within both radii", len(reach)),
         ("free in your window", len(ranked)),
     ]
@@ -411,9 +436,9 @@ def find_matches(request: StudyRequest, inputs: Inputs) -> tuple[list[Candidate]
         return ranked[:TOP_N], funnel, False, ""
 
     if not course:
-        return [], funnel, False, f"Nobody else has listed {code} yet."
+        return [], funnel, False, f"Nobody else has listed {topic} yet."
     if not reach:
-        return [], funnel, False, f"Nobody taking {code} is within reach of your travel radius."
+        return [], funnel, False, f"Nobody taking {topic} is within reach of your travel radius."
 
     horizon = start + timedelta(days=SEARCH_DAYS)
     mine_later = free_time(me, start, horizon)
@@ -429,7 +454,7 @@ def find_matches(request: StudyRequest, inputs: Inputs) -> tuple[list[Candidate]
             cand.free = free
             later.append(cand)
     if not later:
-        return [], funnel, False, f"Nobody taking {code} is free then, or in the next two weeks."
+        return [], funnel, False, f"Nobody taking {topic} is free then, or in the next two weeks."
     later.sort(key=lambda cand: (cand.free[0][0], -cand.score, cand.person.profile.id))
     return later[:TOP_N], funnel, True, ""
 
@@ -528,7 +553,7 @@ def _reason(
     ranked: list[Candidate],
     notes: list[str],
 ) -> str:
-    code = _course_code(request.course_id)
+    topic = _topic(request.course_id)
     people = [cand.person for cand in group]
     when = pretty_range(_iso(window[0]), _iso(window[1]))
     plural = len(people) > 1
@@ -536,15 +561,15 @@ def _reason(
     if later:
         asked = pretty_range(request.starts_at, request.ends_at)
         lines.append(
-            f"Nobody taking {code} is free {asked}. {_names(people)} {'share' if plural else 'shares'} {code} "
+            f"Nobody taking {topic} is free {asked}. {_names(people)} {'share' if plural else 'shares'} {topic} "
             f"and {'are' if plural else 'is'} free {when}, the next time you are both open."
         )
     else:
-        lines.append(f"{_names(people)} {'share' if plural else 'shares'} {code} and {'are' if plural else 'is'} free {when}.")
+        lines.append(f"{_names(people)} {'share' if plural else 'shares'} {topic} and {'are' if plural else 'is'} free {when}.")
     exams = [cand.shared_exam for cand in group if cand.shared_exam]
     if exams:
         exam_day = _parse(exams[0].starts_at)
-        line = f"You are both preparing for the {code} exam on {exam_day:%a} {exam_day.day} {exam_day:%b}"
+        line = f"You are both preparing for the {topic} exam on {exam_day:%a} {exam_day.day} {exam_day:%b}"
         if any(cand.parts["priority"] for cand in group):
             line += ", and this is in its priority window"
         lines.append(line + ".")
@@ -567,10 +592,10 @@ def _reason(
 
 
 def _invite(request: StudyRequest, people: list[Person], window: Interval, place: dict) -> str:
-    code = _course_code(request.course_id)
+    topic = _topic(request.course_id)
     when = pretty_range(_iso(window[0]), _iso(window[1]))
     return (
-        f"Hi {_names(people)}! I'm looking for someone to study {code} with. "
+        f"Hi {_names(people)}! I'm looking for someone to study {topic} with. "
         f"Want to meet at {place['name']} ({place['address']}) on {when}? Let me know if that works."
     )
 
@@ -667,7 +692,10 @@ def build_proposal(
     course_code: str, starts_at: str, ends_at: str, place_type: str, note: str, study_anyway: bool = False
 ) -> Proposal:
     """Session page entry point. Raises NoMatch with a message for the page."""
-    course_id = next((course["id"] for course in courses() if course["code"] == course_code), course_code)
+    if str(course_code).startswith("subject:"):
+        course_id = course_code
+    else:
+        course_id = next((course["id"] for course in courses() if course["code"] == course_code), course_code)
     if place_type not in PLACE_LABELS:
         place_type = public_profile().place_types[0]
     request = StudyRequest(

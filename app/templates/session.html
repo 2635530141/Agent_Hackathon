@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Session · Study mate{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  <div class="stack">
+    <h1 class="title">New session</h1>
+    <p class="lede">Marc owns this page. A course, a time, and a place type are enough. The note is optional. A collision with your own calendar stops the proposal until you pick another time or study anyway.</p>
+  </div>
+  {% if error %}
+  <div class="callout warn"><p>{{ error }}</p></div>
+  {% endif %}
+  {% if notice %}
+  <div class="callout good"><p>{{ notice }}</p></div>
+  {% endif %}
+
+  <form method="get" action="/session" class="card stack">
+    <label class="field">
+      <span class="label">Course</span>
+      <select name="course_id">
+        {% for item in courses %}
+        <option value="{{ item.id }}" {% if item.id == course.id %}selected{% endif %}>{{ item.code }} · {{ item.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="split">
+      <label class="field">
+        <span class="label">Starts</span>
+        <input type="datetime-local" name="starts_at" value="{{ starts_at }}">
+      </label>
+      <label class="field">
+        <span class="label">Ends</span>
+        <input type="datetime-local" name="ends_at" value="{{ ends_at }}">
+      </label>
+    </div>
+    <div class="choices">
+      {% for value, label in place_labels.items() %}
+      <label class="choice">
+        <input type="radio" name="place_type" value="{{ value }}" {% if place_type == value %}checked{% endif %}>
+        {{ label }}
+      </label>
+      {% endfor %}
+    </div>
+    <label class="field">
+      <span class="label">Note</span>
+      <textarea name="note" placeholder="Not a library.">{{ note }}</textarea>
+    </label>
+    <div class="cluster">
+      <button class="button primary" type="submit">Check this time</button>
+    </div>
+  </form>
+
+  {% if conflict %}
+    {% with interactive=true %}
+      {% include "partials/conflict.html" %}
+    {% endwith %}
+  {% endif %}
+
+  {% if proposal %}
+    {% with interactive=true %}
+      {% include "partials/proposal.html" %}
+    {% endwith %}
+  {% endif %}
+
+  {% if invitation.status == "pending" %}
+  <p class="hint">Waiting for the other student. The invite page is <a href="/invite/demo">/invite/demo</a>.</p>
+  {% elif invitation.status == "accepted" %}
+  <div class="callout good">
+    <p>They accepted {{ invitation.place_name }}.</p>
+    {% if invitation.calendar_written %}
+    <p>The session is marked on your calendar for this demo.</p>
+    {% else %}
+    <form method="post" action="/session/calendar">
+      <input type="hidden" name="course_id" value="{{ course.id }}">
+      <input type="hidden" name="starts_at" value="{{ starts_at }}">
+      <input type="hidden" name="ends_at" value="{{ ends_at }}">
+      <input type="hidden" name="place_type" value="{{ place_type }}">
+      <input type="hidden" name="note" value="{{ note }}">
+      <input type="hidden" name="study_anyway" value="{{ '1' if study_anyway else '0' }}">
+      <button class="button" type="submit">Add to my calendar</button>
+    </form>
+    {% endif %}
+  </div>
+  {% elif invitation.status == "declined" %}
+  <div class="callout warn"><p>They declined. Start again with another time.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+<aside class="callout warn">
+  <p><strong>You're busy then.</strong> {{ conflict.title }} overlaps this session.</p>
+  <div class="cluster">
+    {% if interactive %}
+    <a class="button primary" href="{{ alternative_href }}">Use {{ alternative_label }}</a>
+    <a class="button quiet" href="{{ anyway_href }}">Study anyway</a>
+    {% else %}
+    <button class="button primary" type="button">Use Thu 29 Oct, 7:00–9:00 PM</button>
+    <button class="button quiet" type="button">Study anyway</button>
+    {% endif %}
+  </div>
+</aside>

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Schedule · Study mate{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  <div class="stack">
+    <h1 class="title">Schedule and calendar</h1>
+    <p class="lede">Shulun owns this page. Weekly hours are when you can study. Exams and calendar events block a session. Matching receives the blocks without titles.</p>
+  </div>
+  {% if error %}
+  <div class="callout warn"><p>{{ error }}</p></div>
+  {% endif %}
+  {% if saved %}
+  <div class="callout good"><p>Saved.</p></div>
+  {% endif %}
+
+  <form method="post" action="/schedule/hours" class="card stack">
+    <h2>Weekly hours</h2>
+    <ul class="hours">
+      {% for day in days %}
+      <li>
+        <span>{{ day_labels[day] }}</span>
+        <input type="time" name="{{ day }}_start" value="{{ weekly[day][0] }}" aria-label="{{ day_labels[day] }} start">
+        <span class="hint">to</span>
+        <input type="time" name="{{ day }}_end" value="{{ weekly[day][1] }}" aria-label="{{ day_labels[day] }} end">
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="cluster"><button class="button primary" type="submit">Save hours</button></div>
+  </form>
+
+  <section class="card stack">
+    <h2>Exams</h2>
+    <ul class="busy-list">
+      {% for exam in exams %}
+      <li class="busy-row">
+        <span>{{ exam.course_code }} · {{ exam.when }}{% if exam.priority %} · priority from {{ exam.priority_when }}{% endif %}</span>
+        <form method="post" action="/schedule/exams/{{ exam.id }}/delete">
+          <button class="button quiet" type="submit">Remove</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/schedule/exams" class="stack">
+      <div class="split">
+        <label class="field">
+          <span class="label">Course</span>
+          <select name="course_id">
+            {% for course in courses %}
+            <option value="{{ course.id }}">{{ course.code }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          <span class="label">Starts</span>
+          <input type="datetime-local" name="starts_at" value="2026-11-12T09:00">
+        </label>
+        <label class="field">
+          <span class="label">Ends</span>
+          <input type="datetime-local" name="ends_at" value="2026-11-12T12:00">
+        </label>
+      </div>
+      <label class="choice">
+        <input type="checkbox" name="priority" value="yes" checked>
+        Mark the three days before as a priority window
+      </label>
+      <div class="cluster"><button class="button" type="submit">Add exam</button></div>
+    </form>
+  </section>
+
+  <section class="card stack">
+    <h2>One-off slots</h2>
+    <form method="post" action="/schedule/exceptions" class="stack">
+      <div class="split">
+        <label class="field">
+          <span class="label">Starts</span>
+          <input type="datetime-local" name="starts_at" value="2026-10-30T18:00">
+        </label>
+        <label class="field">
+          <span class="label">Ends</span>
+          <input type="datetime-local" name="ends_at" value="2026-10-30T20:00">
+        </label>
+        <label class="field">
+          <span class="label">Kind</span>
+          <select name="kind">
+            <option value="busy">Busy</option>
+            <option value="free">Extra free time</option>
+          </select>
+        </label>
+      </div>
+      <div class="cluster"><button class="button" type="submit">Add slot</button></div>
+    </form>
+  </section>
+
+  <section class="split">
+    <div class="card stack">
+      <h2>Your busy times</h2>
+      <p class="hint">Titles stay on this page.</p>
+      {% if calendar.connected %}
+      <div class="callout good"><p>Calendar marked connected for this demo. Google is not reading a real account. Horizon: {{ calendar.horizon }}.</p></div>
+      {% else %}
+      <form method="post" action="/schedule/calendar">
+        <button class="button" type="submit">Connect Google Calendar</button>
+      </form>
+      {% endif %}
+      <ul class="busy-list">
+        {% for block in blocks %}
+        <li class="busy-row">
+          <span>{{ block.when }}</span>
+          <span class="chip">{{ block.source }}</span>
+          <span class="meta">{{ block.title or "No title" }}{% if block.kind == "free" %} · free{% endif %}</span>
+          {% if block.source == "exception" %}
+          <form method="post" action="/schedule/exceptions/{{ block.id }}/delete">
+            <button class="button quiet" type="submit">Remove</button>
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="card stack">
+      <h2>What matching receives</h2>
+      <ul class="busy-list">
+        {% for block in match_blocks %}
+        <li class="busy-row">
+          <span>{{ block.when }}</span>
+          <span class="chip">{{ block.source }}</span>
+          <span class="meta">{{ block.kind or "busy" }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+</div>
+{% endblock %}

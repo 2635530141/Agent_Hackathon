@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Matching · Study mate{% endblock %}
+{% block content %}
+<div class="stack-lg">
+  <div class="stack">
+    <h1 class="title">Matching and places</h1>
+    <p class="lede">David owns <code>app/matching_core.py</code>. Replace <code>build_proposal</code>. This page shows the only inputs that function should read, and the canned proposal it returns today.</p>
+  </div>
+  <div class="split">
+    <section class="card stack">
+      <h2>Inputs</h2>
+      <dl class="facts">
+        <dt>Student</dt><dd>{{ profile.name }}</dd>
+        <dt>Study style</dt><dd>{{ style_labels[profile.study_style] }}</dd>
+        <dt>Radius</dt><dd>{{ profile.radius_meters }} m from {{ profile.anchor }}</dd>
+        <dt>Anchor</dt><dd>{{ profile.anchor_lat }}, {{ profile.anchor_lng }}</dd>
+        <dt>Group size</dt><dd>{{ profile.group_size }}</dd>
+        <dt>Places</dt><dd>{% for place in profile.place_types %}{{ place_labels[place] }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+        <dt>Major</dt><dd>{{ profile.major }} · year {{ profile.year }}</dd>
+        <dt>Courses</dt><dd>{{ profile.course_ids | join(", ") }}</dd>
+        <dt>Eligible ids</dt><dd>{{ eligible_ids | join(", ") }}</dd>
+      </dl>
+      <h2>Busy, without titles</h2>
+      <ul class="busy-list">
+        {% for block in busy_rows %}
+        <li class="busy-row">
+          <span>{{ block.when }}</span>
+          <span class="chip">{{ block.source }}</span>
+          <span class="meta">{{ block.kind }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    <section class="stack">
+      <h2 class="section-title">Canned proposal</h2>
+      {% with interactive=false %}
+        {% include "partials/proposal.html" %}
+      {% endwith %}
+      <p class="hint">JSON for the same payload is at <a href="/api/match">/api/match</a>.</p>
+    </section>
+  </div>
+</div>
+{% endblock %}

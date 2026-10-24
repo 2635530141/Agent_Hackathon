@@ -9,6 +9,9 @@
   {% if error %}
   <div class="callout warn"><p>{{ error }}</p></div>
   {% endif %}
+  {% if profile.under_18 %}
+  <div class="callout warn"><p>You said you are under 18, so you will not be matched with anyone.</p></div>
+  {% endif %}
   {% if saved %}
   <div class="callout good"><p>Profile saved. Street address and gender stay on this page only.</p></div>
   {% endif %}
@@ -16,6 +19,7 @@
     <form method="post" action="/profile" class="stack">
       <fieldset class="stack">
         <legend class="section-title">Study style</legend>
+        <p class="hint">Pick the closest suggestion, then describe it in your own words if you like.</p>
         <div class="choices">
           {% for value, label in style_labels.items() %}
           <label class="choice">
@@ -24,6 +28,10 @@
           </label>
           {% endfor %}
         </div>
+        <label class="field">
+          <span class="label">In your own words (optional)</span>
+          <input name="study_style_note" value="{{ profile.study_style_note }}" maxlength="200" placeholder="e.g. Pomodoro sessions, then we compare answers">
+        </label>
       </fieldset>
 
       <fieldset class="stack">
@@ -31,8 +39,11 @@
         <label class="field">
           <span class="label">Street address</span>
           <input name="street_address" value="{{ profile.street_address }}" autocomplete="street-address">
-          <span class="hint">Stored for the radius. A match never receives this string.</span>
+          <span class="hint">Located with Google Maps to center your radius on home. A match never receives this string.</span>
         </label>
+        {% if not maps_connected %}
+        <p class="hint">Google Maps is not connected yet, so only a few demo addresses can be found. Add GOOGLE_MAPS_API_KEY to .env to look up any address.</p>
+        {% endif %}
         <label class="field">
           <span class="label">Travel radius in meters</span>
           <input name="radius_meters" type="number" min="200" max="20000" value="{{ profile.radius_meters }}">
@@ -47,6 +58,7 @@
             Center on campus
           </label>
         </div>
+        <p class="hint">Your radius is centered on {{ "home" if profile.anchor == "home" else "campus" }}. <a href="{{ anchor_map }}" target="_blank" rel="noopener">See it on Google Maps</a></p>
       </fieldset>
 
       <fieldset class="stack">
@@ -85,15 +97,11 @@
             </select>
           </label>
         </div>
-        <div class="choices">
-          {% for course in courses %}
-          <label class="choice">
-            <input type="checkbox" name="course_ids" value="{{ course.id }}" {% if course.id in profile.course_ids %}checked{% endif %}>
-            {{ course.code }}
-            <span class="hint">{{ course.name }}</span>
-          </label>
-          {% endfor %}
-        </div>
+        <label class="field">
+          <span class="label">Courses this term</span>
+          <input name="courses" value="{{ course_text }}" placeholder="CS 61A, Math 54" required>
+          <span class="hint">Type exact course codes, separated by commas. In a session you pick from these.</span>
+        </label>
       </fieldset>
 
       <fieldset class="stack">
@@ -120,6 +128,15 @@
           </label>
         </div>
       </fieldset>
+
+      <fieldset class="stack">
+        <legend class="section-title">Age</legend>
+        <label class="choice">
+          <input type="checkbox" name="under_18" value="1" {% if profile.under_18 %}checked{% endif %}>
+          I am under 18
+        </label>
+        <p class="hint">Students under 18 are not matched.</p>
+      </fieldset>
       <div class="cluster">
         <button class="button primary" type="submit">Save profile</button>
       </div>
@@ -139,6 +156,9 @@
         {% endfor %}
         <span class="chip">{{ public.radius_meters }} m · {{ public.anchor }}</span>
       </div>
+      {% if public.study_style_note %}
+      <p class="meta">{{ public.study_style_note }}</p>
+      {% endif %}
       <ul class="busy-list">
         {% for course in courses if course.id in public.course_ids %}
         <li>{{ course.code }}</li>

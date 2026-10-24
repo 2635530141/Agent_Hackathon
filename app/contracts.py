@@ -23,6 +23,7 @@ class PublicProfile(BaseModel):
     id: str
     name: str
     study_style: StudyStyle
+    study_style_note: str = ""
     radius_meters: int
     anchor: Anchor
     anchor_lat: float
@@ -41,6 +42,7 @@ class PrivateProfile(PublicProfile):
     street_address: str
     gender_self: Gender = ""
     gender_preference: Gender = ""
+    under_18: bool = False
 
 
 class BusyInterval(BaseModel):

@@ -9,3 +9,4 @@ Authlib>=1.9,<2
 cryptography>=44
 joserfc>=1.7,<2
 itsdangerous>=2.2
+pytest>=8

@@ -51,10 +51,6 @@ _KNOWN_ADDRESSES = {
 }
 
 
-def maps_connected() -> bool:
-    return bool(places.maps_key())
-
-
 def maps_url(lat: float, lng: float) -> str:
     return places.maps_url(lat, lng)
 

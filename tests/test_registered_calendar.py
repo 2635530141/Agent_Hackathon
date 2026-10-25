@@ -15,6 +15,14 @@ def csrf(client):
     return {'X-CSRF-Token': data['csrf']}
 
 
+def test_account_ids_cannot_reuse_a_restarted_demo_counter(monkeypatch):
+    monkeypatch.setattr(accounts, '_accounts', deepcopy(accounts._accounts))
+    monkeypatch.setattr(accounts, 'next_id', lambda prefix: prefix+'_restarted')
+    first=accounts.register('Synthetic One','one-id@example.invalid','synthetic-test-password')
+    second=accounts.register('Synthetic Two','two-id@example.invalid','synthetic-test-password')
+    assert first['id'] != second['id']
+
+
 def test_registered_account_can_edit_own_calendar_without_reading_maya(monkeypatch):
     monkeypatch.setattr(accounts, '_accounts', deepcopy(accounts._accounts))
     with TestClient(app) as person, TestClient(app) as maya:

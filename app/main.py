@@ -30,9 +30,10 @@ def create_app(*, calendar_host=None):
     @app.middleware("http")
     async def require_login(request, call_next):
         from secrets import token_urlsafe, compare_digest
-        from .scheduling.context import calendar_context
+        from .scheduling.context import calendar_context, local_subject
         path = request.url.path
         token = None
+        local_token = None
         if calendar_host:
             # Explicitly private preview, never a public production deployment.
             if request.url.netloc != calendar_host.origin.split("://",1)[1] or request.client.host not in {"127.0.0.1", "::1", "testclient"}:
@@ -65,10 +66,13 @@ def create_app(*, calendar_host=None):
             if request.session.get("user"):
                 if calendar_host and path == "/home":
                     return RedirectResponse("/schedule",303)
+                if not calendar_host:
+                    local_token = local_subject.set(request.session["user"]["id"])
                 return await call_next(request)
             return RedirectResponse("/login",status_code=303)
         finally:
             if token is not None: calendar_context.reset(token)
+            if local_token is not None: local_subject.reset(local_token)
 
     app.add_middleware(SessionMiddleware,
         secret_key=calendar_host.session_secret if calendar_host else "studymate-demo",

@@ -35,7 +35,9 @@ def check_room_time(request, participant_ids, starts_at, ends_at, *, room_id=Non
             active.refresh_calendars(context, sorted(subject_ids))
             service = active.service
         else:
-            known = {store.OWNER_ID, *(person["id"] for person in store.others())}
+            from app import accounts
+            known = {store.OWNER_ID, current_id, *(person["id"] for person in store.others()),
+                     *(account["id"] for account in accounts._accounts.values())}
             if not current_id or not subject_ids <= known:
                 raise AuthorizationError()
             context = TrustedMatchContext(eligible_subject_ids=frozenset(subject_ids))
@@ -83,7 +85,8 @@ def refresh_before_request(request):
     from .runtime import get_runtime
     from .demo import FIXTURE_HORIZON
     runtime = get_runtime()
-    for user in [store.OWNER_ID,*(p["id"] for p in store.others())]:
+    from .context import owner_id
+    for user in {owner_id(),store.OWNER_ID,*(p["id"] for p in store.others())}:
         runtime.service.refresh_calendar(Actor(subject_id=user),FIXTURE_HORIZON)
     return {"mode":"synthetic"}
 

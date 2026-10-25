@@ -215,8 +215,9 @@ def test_team_login_gate_and_other_demo_account_cannot_read_owner_private_view(m
         denied = client.get("/schedule",follow_redirects=False)
         assert denied.status_code == 303 and denied.headers["location"] == "/login"
         client.post("/login",data={"email":email,"password":password})
-        assert client.get("/schedule").status_code == 403
-        assert client.get("/api/schedule/busy").status_code == 403
+        assert client.get("/schedule").status_code == 200
+        assert client.get("/api/schedule/busy").json() == []
+        assert client.get("/schedule?owner_id=u_maya").status_code == 403
         # A demo login does not establish a trusted Google actor.
         assert client.get("/calendar/google/connect").status_code == 404
 

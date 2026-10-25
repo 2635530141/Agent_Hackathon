@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+from uuid import uuid4
 
 from app.store import next_id
 
@@ -44,7 +45,7 @@ def register(name: str, email: str, password: str) -> dict:
     if clean_email in _accounts:
         raise ValueError("That email already has an account. Sign in instead.")
     account = {
-        "id": next_id("user"),
+        "id": "user_" + uuid4().hex,
         "name": clean_name,
         "email": clean_email,
         "password_hash": _hash(password, next_id("salt")),

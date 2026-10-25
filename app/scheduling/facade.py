@@ -157,7 +157,7 @@ def remove_exception(exception_id: str) -> None:
 
 def effective_availability(student_id: str, starts_at: str, ends_at: str, duration_minutes: int = 1):
     """Trusted server-only matching API. Profile establishes the eligible pool."""
-    if live_context():
+    if live_context() or student_id == owner_id():
         return get_runtime().service.effective_availability(Actor(subject_id=owner_id()), student_id, horizon(starts_at, ends_at), duration_minutes)
     from app.profile_core import eligible_student_ids
     context = TrustedMatchContext(eligible_subject_ids=frozenset([store.OWNER_ID, *eligible_student_ids()]))

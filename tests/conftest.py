@@ -10,7 +10,7 @@ def isolated_calendar(tmp_path, monkeypatch):
     get_runtime.cache_clear()
     monkeypatch.setenv("STUDYMATE_CALENDAR_DB", f"sqlite+pysqlite:///{(tmp_path/'calendar.db').as_posix()}")
     monkeypatch.setenv("STUDYMATE_CALENDAR_MODE", "synthetic")
-    for name in ("_invitations", "_latest_batch_ids", "_draft", "_owner"):
+    for name in ("_invitations", "_latest_batch_ids", "_draft", "_owner", "_rooms"):
         monkeypatch.setattr(store, name, deepcopy(getattr(store, name)))
     yield
     if get_runtime.cache_info().currsize:

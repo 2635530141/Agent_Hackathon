@@ -7,7 +7,7 @@ from .export_service import CalendarExportService
 from .core.schemas import TrustedMatchContext, Actor
 
 
-def check_room_time(request, participant_ids, starts_at, ends_at):
+def check_room_time(request, participant_ids, starts_at, ends_at, *, room_id=None, switching=False):
     """Recheck server-resolved room members and times before a room mutation.
 
     This is a Session coordinator hook, not a model or Matching tool. It returns
@@ -35,7 +35,9 @@ def check_room_time(request, participant_ids, starts_at, ends_at):
             active.refresh_calendars(context, sorted(subject_ids))
             service = active.service
         else:
-            known = {store.OWNER_ID, *(person["id"] for person in store.others())}
+            from app import accounts
+            known = {store.OWNER_ID, current_id, *(person["id"] for person in store.others()),
+                     *(account["id"] for account in accounts._accounts.values())}
             if not current_id or not subject_ids <= known:
                 raise AuthorizationError()
             context = TrustedMatchContext(eligible_subject_ids=frozenset(subject_ids))
@@ -46,7 +48,14 @@ def check_room_time(request, participant_ids, starts_at, ends_at):
             service = runtime.service
         codes = set()
         for subject_id in sorted(subject_ids):
-            decision = service.check_candidate_slot(context, subject_id, requested, horizon)
+            excluded = {room_id} if room_id else set()
+            if switching and subject_id == current_id and not isinstance(active, GoogleCalendarIntegration):
+                # Session will remove this actor's overlapping seats after success.
+                # Never ignore an exam, manual block, invite, or another member's seat.
+                excluded.update(block.session_id for block, _ in
+                    TeamSessionGateway().scheduled_rooms(subject_id, horizon))
+            decision = service.check_candidate_slot(context, subject_id, requested, horizon,
+                exclude_session_ids=frozenset(excluded))
             codes.update(conflict.code for conflict in decision.conflicts)
     except (AuthorizationError, ConnectionError):
         raise ValueError("Participant calendars could not be verified. Refresh or connect the team account before continuing.") from None
@@ -76,7 +85,8 @@ def refresh_before_request(request):
     from .runtime import get_runtime
     from .demo import FIXTURE_HORIZON
     runtime = get_runtime()
-    for user in [store.OWNER_ID,*(p["id"] for p in store.others())]:
+    from .context import owner_id
+    for user in {owner_id(),store.OWNER_ID,*(p["id"] for p in store.others())}:
         runtime.service.refresh_calendar(Actor(subject_id=user),FIXTURE_HORIZON)
     return {"mode":"synthetic"}
 

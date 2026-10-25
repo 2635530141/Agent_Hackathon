@@ -215,8 +215,9 @@ def test_team_login_gate_and_other_demo_account_cannot_read_owner_private_view(m
         denied = client.get("/schedule",follow_redirects=False)
         assert denied.status_code == 303 and denied.headers["location"] == "/login"
         client.post("/login",data={"email":email,"password":password})
-        assert client.get("/schedule").status_code == 403
-        assert client.get("/api/schedule/busy").status_code == 403
+        assert client.get("/schedule").status_code == 200
+        assert client.get("/api/schedule/busy").json() == []
+        assert client.get("/schedule?owner_id=u_maya").status_code == 403
         # A demo login does not establish a trusted Google actor.
         assert client.get("/calendar/google/connect").status_code == 404
 
@@ -241,4 +242,5 @@ def test_latest_session_interpretation_hands_time_to_calendar_with_mock_only(mon
         assert "Exam overlaps this time." in response.text
         assert "EXAM_BUSY" in schedule_core.own_conflict("2026-10-26T16:00","2026-10-26T17:00",True)["codes"]
         assert 'name="sentence" value="Synthetic request"' in response.text  # New room forms retain the conversation.
-        assert "<p>Synthetic request</p>" in response.text
+        # The current Session UI hides the completed conversation and shows rooms.
+        assert "Open a room" in response.text

@@ -11,14 +11,15 @@ FIXTURE_HORIZON = Horizon(start="2026-10-24T07:00Z", end="2026-11-23T08:00Z")
 
 
 def demo_owner(request: Request) -> Actor:
-    # No target-user query, role string, or header can change the fixed fixture actor.
+    # Only the existing signed login session selects the local account.
     session_user = request.session.get("user")
-    if not session_user or session_user.get("id") != store.OWNER_ID:
-        raise HTTPException(403, "SYNTHETIC_OWNER_ONLY")
+    if not session_user or not session_user.get("id"):
+        raise HTTPException(403, "LOGIN_REQUIRED")
+    subject_id = session_user["id"]
     attempted = request.query_params.get("user_id") or request.query_params.get("owner_id")
-    if attempted and attempted != store.OWNER_ID:
+    if attempted and attempted != subject_id:
         raise HTTPException(403, "NOT_OWNER")
-    return Actor(subject_id=store.OWNER_ID)
+    return Actor(subject_id=subject_id)
 
 
 def fixture_records():

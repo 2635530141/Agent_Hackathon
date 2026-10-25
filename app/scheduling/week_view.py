@@ -28,8 +28,14 @@ def week_payload(service, owner_id, selected_day):
             "Extra study time" if item.kind=="available" else "Unavailable",{}))
     for item in view.private_calendar_events:
         raw.append((item,"calendar",item.id,item.private_title or "Calendar busy",{}))
+    details = getattr(service.sessions, "reservation_details", lambda *_: {})(owner_id, span)
     for item in view.confirmed_reservations:
-        raw.append((item,"session",item.session_id,"Confirmed study session",{}))
+        detail = details.get(item.session_id, {})
+        label = detail.get("label", "Confirmed study session")
+        if detail.get("place"):
+            label += " · "+detail["place"]
+        raw.append((item,"session",item.session_id,label,
+                    {"session_url":detail["session_url"]} if detail.get("session_url") else {}))
     days,entries = [],[]
     for index in range(7):
         day = monday+timedelta(days=index)

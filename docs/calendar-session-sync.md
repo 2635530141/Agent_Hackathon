@@ -33,4 +33,6 @@ $env:STUDYMATE_CALENDAR_DB='sqlite+pysqlite:///C:/Users/shulu/Desktop/StudyMate_
 
 ## Remaining integration dependency
 
+Follow-up account fix: normal signed-in accounts now bind Calendar to their own ID in request-local context. They start with their own empty local schedule, not Maya's fixture records. Existing owner-target rejection, CSRF, and cross-account record protection remain in place. The retired private Google host still uses its separate authenticated context.
+
 Session currently stores rooms in process memory (`store._rooms`). Restarting the server resets that source, although Calendar's SQLite edits persist. Production restart durability and multi-worker consistency require the team's persistent Session repository and authenticated membership adapter. This change does not claim those dependencies are delivered, or any real Google integration.

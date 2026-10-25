@@ -169,8 +169,10 @@ def test_rejected_room_change_preserves_host_permissions(runtime, browser):
 
 def test_unknown_demo_account_cannot_borrow_owner_calendar(runtime, monkeypatch):
     monkeypatch.setattr(accounts, "_accounts", deepcopy(accounts._accounts))
-    accounts.register("Synthetic Stranger", "stranger@example.test", "synthetic-password")
+    person = accounts.register("Synthetic Stranger", "stranger@example.test", "synthetic-password")
     with TestClient(app) as browser:
         browser.post("/login", data={"email":"stranger@example.test", "password":"synthetic-password"})
         response = open_room(browser, 13, 14)
-        assert response.status_code == 303 and store.rooms() == []
+        assert response.status_code == 303
+        assert len(store.rooms()) == 1 and store.rooms()[0]["host_id"] == person["id"]
+        assert browser.get("/schedule?owner_id="+OWNER).status_code == 403

@@ -35,6 +35,22 @@ def test_short_day_names(text, window):
     assert s._local_window(text) == window
 
 
+def test_a_later_reply_can_be_only_the_clock():
+    def asked(*replies):
+        turns = []
+        for reply in replies:
+            if turns:
+                turns.append({"role": "assistant", "text": "You didn't specify a time. What time do you want to meet?"})
+            turns.append({"role": "user", "text": reply})
+        parsed, question = s._clarify({}, store.courses(), turns)
+        assert question == ""
+        return parsed["starts_at"], parsed["ends_at"]
+
+    assert asked("wednesday", "1") == ("2026-10-28T13:00", "2026-10-28T14:00")
+    assert asked("wednesday", "1", "1pm") == ("2026-10-28T13:00", "2026-10-28T14:00")
+    assert asked("wednesday", "1pm") == ("2026-10-28T13:00", "2026-10-28T14:00")
+
+
 def test_a_full_day_name_wins_over_a_word_like_sat():
     assert s._local_window("I sat in the library wednesday 7pm") == ("2026-10-28T19:00", "2026-10-28T20:00")
 

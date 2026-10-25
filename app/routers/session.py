@@ -170,7 +170,7 @@ def _is_open_time(turns: list[dict]) -> bool:
     if not user_turns:
         return False
     latest = user_turns[-1]
-    if _local_window(latest) and not _is_flexible_day(latest):
+    if _clock_pair(latest) and not _is_flexible_day(latest):
         return False
     if _is_flexible_day(latest):
         return False
@@ -221,50 +221,69 @@ _SPAN = re.compile(
 )
 
 
-def _local_window(text: str) -> tuple[str, str] | None:
-    day = next((number for name, number in _DAYS.items() if re.search(rf"\b{name}\b", text, re.IGNORECASE)), None)
-    if day is None:
-        return None
+def _day_number(text: str) -> int | None:
+    return next((number for name, number in _DAYS.items() if re.search(rf"\b{name}\b", text, re.IGNORECASE)), None)
+
+
+def _clock_pair(text: str) -> tuple[tuple[int, int], tuple[int, int] | None] | None:
+    """A time of day in this text. The end is omitted when they named one clock."""
     span = _SPAN_BETWEEN.search(text) or _SPAN.search(text)
-    point = re.search(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", text, re.IGNORECASE)
-    clock = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", text, re.IGNORECASE)
-    start = end = None
     if span:
         start = _study_hour(int(span.group(1)), int(span.group(2) or 0), span.group(3) or span.group(6))
         end = _study_hour(int(span.group(4)), int(span.group(5) or 0), span.group(6) or span.group(3))
         if start and end and end <= start and not span.group(6) and end[0] + 12 <= 23:
             end = (end[0] + 12, end[1])  # "7-9" with no am/pm is 7 to 9 in the evening.
-        if not (start and end and end > start):
-            start = end = None
-    if start is None and point:
-        start = _study_hour(int(point.group(1)), int(point.group(2) or 0), point.group(3))
-    elif start is None and clock:
-        start = _study_hour(int(clock.group(1)), int(clock.group(2) or 0), clock.group(3))
-    if start and end and (end[0], end[1]) > start:
-        begin, finish = start, end
-    elif start:
-        begin = start
-        finish = (start[0] + 1, start[1]) if start[0] < 23 else (23, 59)
-    else:
-        part = next((clocks for name, clocks in _PARTS.items() if re.search(rf"\b{name}\b", text, re.IGNORECASE)), None)
-        if part is not None:
-            return f"2026-10-{day:02d}T{part[0]}", f"2026-10-{day:02d}T{part[1]}"
-        if _is_flexible_day(text):
-            return f"2026-10-{day:02d}T09:00", f"2026-10-{day:02d}T21:00"
-        return None
+        if start and end and end > start:
+            return start, end
+    point = re.search(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b", text, re.IGNORECASE)
+    clock = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", text, re.IGNORECASE)
+    # A reply that is only a number: "1" is 1:00 PM. A course code in a sentence is not.
+    bare = re.fullmatch(r"\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*", text, re.IGNORECASE)
+    chosen = point or clock or bare
+    if chosen:
+        start = _study_hour(int(chosen.group(1)), int(chosen.group(2) or 0), chosen.group(3))
+        if start:
+            return start, None
+    part = next((clocks for name, clocks in _PARTS.items() if re.search(rf"\b{name}\b", text, re.IGNORECASE)), None)
+    if part is not None:
+        begin = tuple(int(piece) for piece in part[0].split(":"))
+        finish = tuple(int(piece) for piece in part[1].split(":"))
+        return begin, finish
+    if _is_flexible_day(text):
+        return (9, 0), (21, 0)
+    return None
+
+
+def _format_window(day: int, pair: tuple[tuple[int, int], tuple[int, int] | None]) -> tuple[str, str]:
+    begin, finish = pair
+    if finish is None:
+        finish = (begin[0] + 1, begin[1]) if begin[0] < 23 else (23, 59)
     return (
         f"2026-10-{day:02d}T{begin[0]:02d}:{begin[1]:02d}",
         f"2026-10-{day:02d}T{finish[0]:02d}:{finish[1]:02d}",
     )
 
 
+def _local_window(text: str) -> tuple[str, str] | None:
+    day = _day_number(text)
+    pair = _clock_pair(text)
+    if day is None or pair is None:
+        return None
+    return _format_window(day, pair)
+
+
 def _window_from_turns(turns: list[dict]) -> tuple[str, str] | None:
-    """The latest reply that names a day and a time wins over an earlier 'any time'."""
+    """The day and the clock can arrive in different replies. The latest of each one wins."""
     user_turns = [turn["text"] for turn in turns if turn.get("role") == "user"]
+    day = None
+    pair = None
     for text in reversed(user_turns):
-        window = _local_window(text)
-        if window:
-            return window
+        if day is None:
+            day = _day_number(text)
+        if pair is None:
+            pair = _clock_pair(text)
+        if day is not None and pair is not None:
+            return _format_window(day, pair)
     return None
 
 
@@ -711,10 +730,17 @@ def session_page(
 ):
     if fresh == "1":
         request.session.pop("study_thread", None)
+        request.session.pop("study_ready", None)
         return _form_only(request, "", notice=notice)
     if ready != "1":
         thread = list(request.session.get("study_thread") or [])
         question = thread[-1]["text"] if thread and thread[-1].get("role") == "assistant" else ""
+        saved = request.session.get("study_ready") or {}
+        if not question and saved.get("starts_at") and saved.get("course_id"):
+            return RedirectResponse("/session?" + _query(
+                saved["course_id"], saved["starts_at"], saved["ends_at"], saved.get("place_type") or "coffee",
+                saved.get("note") or "", False, saved.get("sentence") or "",
+            ), status_code=303)
         if not question:
             request.session.pop("study_thread", None)
             thread = []
@@ -745,7 +771,7 @@ def session_page(
         "session.html",
         nav="session",
         notice=notice,
-        thread=[],
+        thread=thread,
         question="",
         my_rooms=_my_rooms(request),
         calendar_export=export_card(request),
@@ -778,6 +804,7 @@ def interpret(
         if not text:
             return _form_only(request, "", error="Write what you want to study.")
         thread = [{"role": "user", "text": text}]
+        request.session.pop("study_ready", None)
     parsed, question = _clarify({}, courses, thread)
     if parsed is None:
         try:
@@ -791,8 +818,17 @@ def interpret(
     if question:
         thread.append({"role": "assistant", "text": question})
         request.session["study_thread"] = thread
+        request.session.pop("study_ready", None)
         return _form_only(request, thread[0]["text"], thread=thread, question=question)
     request.session["study_thread"] = thread
+    request.session["study_ready"] = {
+        "sentence": thread[0]["text"],
+        "course_id": parsed["course_id"],
+        "starts_at": parsed["starts_at"],
+        "ends_at": parsed["ends_at"],
+        "place_type": parsed["place_type"],
+        "note": parsed["note"],
+    }
     return _redirect_session(
         parsed["course_id"],
         parsed["starts_at"],
@@ -1145,6 +1181,7 @@ def join_room(
     notice = _ROOM_NOTICES.get(result, "That room is no longer open.")
     if result in {"joined", "switched", "already"}:
         request.session.pop("study_thread", None)
+        request.session.pop("study_ready", None)
         return RedirectResponse("/session?notice=" + quote(notice), status_code=303)
     if not starts_at:
         return _schedule_redirect(room_id, notice, result != "missing")

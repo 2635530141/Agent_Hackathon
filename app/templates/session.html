@@ -52,7 +52,7 @@
 
   <section class="stack" aria-labelledby="find-session">
     <h2 id="find-session" class="section-title">Look for a session</h2>
-    {% if question and thread %}
+    {% if thread %}
     <ol class="thread">
       {% for turn in thread %}
       {% if not (question and loop.last and turn.role == 'assistant') %}
@@ -63,6 +63,8 @@
       {% endif %}
       {% endfor %}
     </ol>
+    {% endif %}
+    {% if question %}
     <form method="post" action="/session/interpret" class="card stack">
       <label class="field">
         <span class="label">{{ question }}</span>
@@ -82,7 +84,7 @@
       </label>
       <div class="cluster">
         <button class="button primary" type="submit">Find a study mate</button>
-        {% if ready %}<a class="button quiet" href="/session?fresh=1">Start over</a>{% endif %}
+        {% if ready or thread %}<a class="button quiet" href="/session?fresh=1">Start over</a>{% endif %}
       </div>
     </form>
     {% endif %}

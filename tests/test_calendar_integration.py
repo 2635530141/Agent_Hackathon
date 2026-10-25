@@ -241,4 +241,5 @@ def test_latest_session_interpretation_hands_time_to_calendar_with_mock_only(mon
         assert "Exam overlaps this time." in response.text
         assert "EXAM_BUSY" in schedule_core.own_conflict("2026-10-26T16:00","2026-10-26T17:00",True)["codes"]
         assert 'name="sentence" value="Synthetic request"' in response.text  # New room forms retain the conversation.
-        assert "<p>Synthetic request</p>" in response.text
+        # The current Session UI hides the completed conversation and shows rooms.
+        assert "Open a room" in response.text

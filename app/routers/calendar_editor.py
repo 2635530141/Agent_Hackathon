@@ -36,7 +36,9 @@ def editor_csrf(request, form_token=None):
 
 @router.get("/week")
 def week(day: date):
+    from app.scheduling.runtime import prepare_local_week
     try:
+        prepare_local_week(owner_id(), day)
         return week_payload(get_runtime().service,owner_id(),day)
     except ValueError:
         raise HTTPException(422,"INVALID_WEEK") from None

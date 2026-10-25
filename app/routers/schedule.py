@@ -32,17 +32,8 @@ def _page(request: Request, error: str = "", saved: str = "", conflict_result=No
         day = date(2026, 10, 29)
         error = "Choose a valid date."
     if not live_context():
-        # Static demo busy blocks are local fixture data, with no external sync.
-        # Recalculate for the visible week so removing the sync UI never leaves
-        # stored-hours availability unusable after the old snapshot TTL expires.
-        from app.scheduling.core.providers.fake import FakeCalendarProvider
-        runtime = get_runtime()
-        if isinstance(runtime.service.provider, FakeCalendarProvider):
-            monday = day-timedelta(days=day.weekday())
-            visible = horizon(monday.isoformat()+"T00:00", (monday+timedelta(days=7)).isoformat()+"T00:00")
-            state = runtime.repository.read_bundle(owner_id())["state"]
-            if runtime.service._calendar_status(state, visible).verification_level == "unknown":
-                runtime.service.refresh_calendar(Actor(subject_id=owner_id()), visible)
+        from app.scheduling.runtime import prepare_local_week
+        prepare_local_week(owner_id(), day)
     availability = schedule_core.effective_availability(owner_id(), day.isoformat()+"T00:00", (day+timedelta(days=1)).isoformat()+"T00:00")
     blocks = []
     for block in schedule_core.list_busy():

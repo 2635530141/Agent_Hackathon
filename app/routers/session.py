@@ -938,7 +938,8 @@ def open_room(
     try:
         check_room_time(request, [p["id"] for p in existing["members"]] if existing else [],
                         existing["starts_at"] if existing else room_starts,
-                        existing["ends_at"] if existing else room_ends)
+                        existing["ends_at"] if existing else room_ends,
+                        room_id=existing["id"] if existing else None, switching=True)
     except ValueError as exc:
         return _redirect_session(course["id"], starts_at, ends_at, place_type, note, study_anyway,
                                  sentence=sentence, error=str(exc))
@@ -1041,7 +1042,7 @@ def change_room_settings(
     room = next((item for item in store.rooms() if item["id"] == room_id), None)
     if room and room["host_id"] == user.get("id") and (chosen[0], chosen[1]) != (room["starts_at"], room["ends_at"]):
         try:
-            check_room_time(request, [p["id"] for p in room["members"]], chosen[0], chosen[1])
+            check_room_time(request, [p["id"] for p in room["members"]], chosen[0], chosen[1], room_id=room_id)
         except ValueError as exc:
             return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, **keep, error=str(exc))
     course = _course_record(room_course)
@@ -1087,7 +1088,7 @@ def change_room_time(
     room = next((item for item in store.rooms() if item["id"] == room_id), None)
     if room and room["host_id"] == user.get("id"):
         try:
-            check_room_time(request, [p["id"] for p in room["members"]], chosen[0], chosen[1])
+            check_room_time(request, [p["id"] for p in room["members"]], chosen[0], chosen[1], room_id=room_id)
         except ValueError as exc:
             return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway,
                                      sentence=sentence, open_room=room_id, error=str(exc))
@@ -1135,7 +1136,8 @@ def join_room(
     room = next((item for item in store.rooms() if item["id"] == room_id), None)
     if room:
         try:
-            check_room_time(request, [p["id"] for p in room["members"]], room["starts_at"], room["ends_at"])
+            check_room_time(request, [p["id"] for p in room["members"]], room["starts_at"], room["ends_at"],
+                            room_id=room_id, switching=True)
         except ValueError as exc:
             if not starts_at:
                 return _schedule_redirect(room_id, str(exc), True)

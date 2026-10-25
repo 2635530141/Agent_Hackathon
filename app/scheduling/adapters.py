@@ -42,14 +42,38 @@ class TeamSessionGateway:
     def current_session(self):
         items = store.latest_invitations()
         return self.read_session("session-"+items[0]["id"]) if items else None
+    def scheduled_rooms(self, subject_id, horizon):
+        """Read current seats from Session; joining is the existing acceptance action."""
+        result = []
+        for room in store.rooms():
+            if room.get("status") in {"cancelled", "closed"}:
+                continue
+            if subject_id not in {person["id"] for person in room["members"]}:
+                continue
+            block = Reservation(session_id=room["id"], start=parse_instant(room["starts_at"]),
+                                end=parse_instant(room["ends_at"]))
+            if overlaps(block, horizon):
+                result.append((block, room))
+        return result
+
+    def reservation_details(self, subject_id, horizon):
+        # Owner-facing display metadata only; never part of Matching output.
+        from urllib.parse import quote
+        return {block.session_id: {"label": room.get("course_code") or "Study session",
+                "place": room.get("place_name", ""),
+                "session_url": "/session?open="+quote(room["id"], safe="")}
+                for block, room in self.scheduled_rooms(subject_id, horizon)}
+
     def confirmed_reservations(self, subject_id, horizon):
+        blocks = {block.session_id: block for block, _ in self.scheduled_rooms(subject_id, horizon)}
+        # Keep the older accepted-invitation flow compatible, without copying rooms
+        # into Calendar or creating a second Session lifecycle.
         items = store.latest_invitations()
-        if not items or not store.batch_all_accepted():
-            return []
         participants = {store.OWNER_ID, *(i["person_id"] for i in items)}
-        if subject_id not in participants:
-            return []
-        first = items[0]
-        block = Reservation(session_id="session-" + first["id"],
-            start=parse_instant(first["starts_at"]), end=parse_instant(first["ends_at"]))
-        return [block] if overlaps(block, horizon) else []
+        if items and store.batch_all_accepted() and subject_id in participants:
+            first = items[0]
+            block = Reservation(session_id="session-"+first["id"],
+                start=parse_instant(first["starts_at"]), end=parse_instant(first["ends_at"]))
+            if overlaps(block, horizon):
+                blocks[block.session_id] = block
+        return sorted(blocks.values(), key=lambda block: (block.start, block.end, block.session_id))

@@ -36,6 +36,9 @@
     editing=entry.id ? entry : null;
     const readonly=entry.editable===false;
     form.reset(); error.hidden=true; deleteConfirm.hidden=true;
+    const sessionLink=document.getElementById("calendar-session-link");
+    sessionLink.hidden=!readonly || !entry.session_url;
+    if(!sessionLink.hidden) sessionLink.href=entry.session_url;
     document.getElementById("calendar-editor-title").textContent=readonly ? entry.label : editing ? "Edit time" : "Create time";
     field("kind").value=readonly ? "busy" : entry.kind || "busy";
     field("starts_at").value=entry.starts_at; field("ends_at").value=entry.ends_at;
@@ -49,6 +52,9 @@
     returnFocus=document.activeElement;dialog.hidden=false;
     document.getElementById("calendar-editor-close").focus();
   }
+  function renderEntries() {
+  grid.querySelectorAll("[data-layer]").forEach(element=>element.remove());
+  renderedEntries.length=0;
   // Study hours no longer limit anything, so stored weekly rules and extra study time are not drawn.
   week.entries.filter(entry => entry.kind!=="weekly" && entry.kind!=="free").forEach(entry => {
     const column=grid.querySelector('.calendar-day[data-day="'+entry.day+'"]');
@@ -73,6 +79,8 @@
     element.title=entry.label+" · "+entry.time_label+" · "+week.timezone; column.append(element);
     renderedEntries.push({element,entry,start:entry.top*48/100,end:(entry.top+entry.height)*48/100});
   });
+  }
+  renderEntries();
   function updateOutsideNotice() {
     const dayView=document.getElementById("calendar-view").value==="day";
     const count=renderedEntries.filter(({entry,start,end})=>entry.kind!=="available" &&
@@ -150,6 +158,31 @@
   hoursSelect.onchange=()=>{try{sessionStorage.setItem("studymate-calendar-visible-hours",hoursSelect.value);}catch(_){}renderHours();};
   outsideButton.onclick=()=>{hoursSelect.value="all";hoursSelect.onchange();hoursSelect.focus();};
   renderHours();
+  // Read the current Session source; never create duplicate calendar records.
+  let liveRequest=false, lastSignature=JSON.stringify([week.entries,week.days]);
+  const liveStatus=document.getElementById("calendar-live-status");
+  async function refreshSchedule() {
+    if(document.hidden || !dialog.hidden || drag || liveRequest) return;
+    liveRequest=true;
+    try {
+      const response=await fetch("/api/schedule/week?day="+encodeURIComponent(week.selected),
+        {credentials:"same-origin",cache:"no-store",headers:{Accept:"application/json"}});
+      if(!response.ok || response.redirected) throw new Error("schedule unavailable");
+      const updated=await response.json();
+      // Do not replace an open editor or a selection while a request was in flight.
+      if(!dialog.hidden || drag || updated.start!==week.start || updated.timezone!==week.timezone) return;
+      const signature=JSON.stringify([updated.entries,updated.days]);
+      if(signature!==lastSignature) {
+        week.entries=updated.entries;week.days=updated.days;
+        renderEntries();renderHours();lastSignature=signature;
+      }
+      liveStatus.textContent="Sessions update automatically";
+    } catch(_) {liveStatus.textContent="Updates paused · retrying";}
+    finally {liveRequest=false;}
+  }
+  window.setInterval(refreshSchedule,5000);
+  window.addEventListener("focus",refreshSchedule);
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden) refreshSchedule();});
   function selectedSlot(target) { return target.closest && target.closest(".cal-slot"); }
   grid.addEventListener("pointerdown",event=>{
     const slot=selectedSlot(event.target);
@@ -188,7 +221,7 @@
     if(dialog.hidden) return;
     if(event.key==="Escape") {event.preventDefault();closeEditor();}
     if(event.key==="Tab") {
-      const items=Array.from(dialog.querySelectorAll("button,input,select")).filter(e=>!e.disabled&&e.getClientRects().length);
+      const items=Array.from(dialog.querySelectorAll("a[href],button,input,select")).filter(e=>!e.disabled&&e.getClientRects().length);
       if(!items.length) return;
       const first=items[0],last=items[items.length-1];
       if(event.shiftKey&&document.activeElement===first) {event.preventDefault();last.focus();}

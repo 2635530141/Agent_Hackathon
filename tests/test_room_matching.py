@@ -192,37 +192,59 @@ def login():
     return client
 
 
+def search(sentence, place_type="coffee", window=THU, client=None):
+    client = client or login()
+    return client.get("/session", params={"ready": "1", "course_id": "cs61a", "starts_at": window[1], "ends_at": window[2],
+                                          "place_type": place_type, "sentence": sentence}).text
+
+
+def cards(page):
+    """Result cards in order: (place, is best match)."""
+    rooms = page.split('id="rooms"', 1)[1]
+    return [(m.group(2), bool(m.group(1))) for m in re.finditer(
+        r'<article class="card room-card[^"]*">\s*(<span class="room-badge">Best match</span>)?.*?<h3>([^<]+)</h3>', rooms, re.S)]
+
+
 def test_session_page_shows_the_ranked_board(model):
     model(answer())
-    page = login().get("/session", params={"ready": "1", "course_id": "cs61a", "starts_at": THU[1], "ends_at": THU[2],
-                                           "place_type": "coffee", "sentence": "CS 61A thursday 6 to 9"}).text
-    titles = re.findall(r"<h3>([^<]+)</h3>", page)
-    assert titles[:2] == ["Doe Library", "Yali&#39;s Cafe"]
-    assert "Best match." in page and "Jordan&#39;s Doe Library room" in page
-    assert "Assistant: why room_doe_thu" in page
+    page = search("CS 61A thursday 6 to 9")
+    assert cards(page) == [("Doe Library", True), ("Yali&#39;s Cafe", False)]
+    assert "2 rooms fit your time" in page
 
 
-def test_said_place_is_a_hard_boundary_and_each_room_says_why(model):
+def test_matched_rooms_do_not_explain_why(model):
+    model(answer())
+    page = search("CS 61A thursday 6 to 9")
+    for text in ("Why it matches", "Assistant:", "as you asked", "why room_doe_thu", "Jordan&#39;s Doe Library room"):
+        assert text not in page
+
+
+def test_said_place_is_a_hard_boundary(model):
     model(answer(ranking=("room_doe_thu",), runner_ups=[]))
-    page = login().get("/session", params={"ready": "1", "course_id": "cs61a", "starts_at": THU[1], "ends_at": THU[2],
-                                           "place_type": "library", "sentence": "CS 61A thursday 6 to 9 in the lib"}).text
-    titles = re.findall(r"<h3>([^<]+)</h3>", page)
-    assert "Yali&#39;s Cafe" not in titles and titles[0] == "Doe Library"
-    for line in ("Fits your time: 7:00 PM–9:00 PM is inside your 6:00 PM–9:00 PM.",
-                 "Any CS course includes CS 61A.", "Doe Library is a library, as you asked.", "2 seats open."):
-        assert line in page.replace("&#39;", "'")
+    page = search("CS 61A thursday 6 to 9 in the lib", place_type="library")
+    assert cards(page) == [("Doe Library", True)]
+    assert "1 room fits your time" in page
 
 
-def test_session_page_without_a_model_says_so(model):
+def test_without_a_model_the_board_still_shows(model):
     model("x", "y")
-    page = login().get("/session", params={"ready": "1", "course_id": "cs61a", "starts_at": THU[1], "ends_at": THU[2],
-                                           "place_type": "library", "sentence": "CS 61A thursday"}).text
-    assert "Showing rooms by start time" in page and "Best match." not in page
+    page = search("CS 61A thursday", place_type="library")
+    assert [name for name, _ in cards(page)] == ["Yali&#39;s Cafe", "Doe Library"]
+    assert not any(best for _, best in cards(page))
 
 
 def test_no_room_fits_so_the_student_opens_one(model):
     scripted = model()
-    page = login().get("/session", params={"ready": "1", "course_id": "cs61a", "starts_at": "2026-10-30T15:00",
-                                           "ends_at": "2026-10-30T17:00", "place_type": "library", "sentence": "CS 61A friday"}).text
-    assert "No open room matches this yet." in page and "Or open your own" in page
+    page = search("CS 61A friday", place_type="library", window=("cs61a", "2026-10-30T15:00", "2026-10-30T17:00"))
+    assert "No room fits yet" in page and "Open your own room" in page
+    assert '<details class="room-create card" open>' in page
     assert scripted.calls == []
+
+
+def test_rooms_you_are_in_are_not_repeated_in_the_results(model):
+    model(answer(ranking=("room_yali_thu",), chosen="room_yali_thu", runner_ups=[]))
+    client = login()
+    store.join_room("room_doe_thu", {"id": "u_maya", "first_name": "Maya", "major": "EECS", "year": 3})
+    page = search("CS 61A thursday 6 to 9", client=client)
+    mine, results = page.split('id="rooms"', 1)
+    assert "Doe Library" in mine and [name for name, _ in cards(page)] == ["Yali&#39;s Cafe"]

@@ -247,7 +247,7 @@ code {
 
 .rooms {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 12px;
 }
 
@@ -795,4 +795,144 @@ textarea {
   .schedule {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* Room board (matching): the search as chips, then rooms led by their time. */
+.search-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-change {
+  margin-left: 4px;
+  font-size: 14px;
+}
+
+.room-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.room-card.is-best {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.room-badge {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.room-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.room-when strong {
+  font-family: var(--serif);
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.room-when span {
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.room-where h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.room-where .hint {
+  margin-top: 2px;
+}
+
+.room-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.seats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.seat-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.seat-dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+}
+
+.seat-dots i.taken {
+  background: var(--accent);
+}
+
+.room-members {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.room-members em {
+  color: var(--ink-faint);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.room-warning {
+  color: var(--warn-ink);
+}
+
+.room-action {
+  margin-top: auto;
+}
+
+.room-action .button.primary {
+  width: 100%;
+}
+
+/* Phones: let the top bar wrap instead of widening the whole page. */
+@media (max-width: 600px) {
+  .site-header,
+  .site-header .cluster,
+  .site-nav {
+    flex-wrap: wrap;
+  }
+
+  .site-header {
+    padding: 12px 16px;
+  }
+}
+
+.room-settings summary,
+.room-create summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.room-create[open] summary {
+  margin-bottom: 10px;
 }

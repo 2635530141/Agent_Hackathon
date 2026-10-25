@@ -80,26 +80,6 @@ def test_a_named_course_is_hard_and_a_subject_is_a_range(asked, room, fits):
     assert s._subject_fits(asked, room) is fits
 
 
-def test_reasons_name_each_factor_that_was_asked():
-    rooms = {r["id"]: r for r in s.rooms_you_can_join("u_maya", "cs61a", *THU)}
-    asked = s._asked_factors("CS 61A thursday 6 to 9 in the lib, group of 4")
-    lines = room_matching.reasons(rooms["room_doe_thu"], asked, "CS 61A", THU)
-    assert lines == [
-        "Fits your time: 7:00 PM–9:00 PM is inside your 6:00 PM–9:00 PM.",
-        "Any CS course includes CS 61A.",
-        "Doe Library is a library, as you asked.",
-        "A room for 4, as you asked.",
-        "2 seats open.",
-    ]
-    exact = room_matching.reasons(rooms["room_yali_thu"], room_matching.Asked(), "CS 61A", None)
-    assert exact == ["CS 61A, as you asked.", "1 seat open."]
-    late = room_matching.reasons(rooms["room_doe_thu"], room_matching.Asked(), "Any CS course",
-                                 ("2026-10-29T20:00", "2026-10-29T21:00"))
-    assert late[0] == "Fits your time: you share 8:00 PM–9:00 PM (room runs 7:00 PM–9:00 PM)."
-    assert room_matching.reasons(rooms["room_yali_thu"], room_matching.Asked(), "Any CS course", None)[0] == (
-        "CS 61A is one of CS courses, as you asked.")
-
-
 # Room settings
 
 
@@ -160,6 +140,15 @@ def test_a_room_never_shrinks_below_its_people():
     assert store.join_room("room_doe_thu", {"id": "u_ken", "first_name": "Ken", "major": "Physics", "year": 2}) == "joined"
     assert store.update_room_settings("room_doe_thu", "u_jordan", capacity=2, **change) == "crowded"
     assert store.update_room_settings("room_doe_thu", "u_jordan", capacity=3, **change) == "updated"
+
+
+def test_settings_save_from_your_sessions_without_a_search():
+    client = login()
+    room_id, _ = open_room(client)
+    fields = {k: v for k, v in settings().items() if k in ("room_course", "room_place", "room_capacity", "room_day", "room_start", "room_end")}
+    answer = client.post(f"/session/rooms/{room_id}/settings", data=fields, follow_redirects=False)
+    assert answer.status_code == 303 and answer.headers["location"].startswith("/session?open=")
+    assert next(r for r in store.rooms() if r["id"] == room_id)["capacity"] == 4
 
 
 def test_only_the_host_can_change_a_room():

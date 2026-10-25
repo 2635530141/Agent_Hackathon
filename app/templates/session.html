@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Session · StudyMate{% endblock %}
 {% block content %}
+{% import "partials/room_macros.html" as rm with context %}
 <div class="session-screen stack-lg">
   {% if error %}
   <div class="callout warn"><p>{{ error }}</p></div>
@@ -13,37 +14,7 @@
     <h1 id="my-sessions" class="title">Your sessions</h1>
     {% if my_rooms %}
     <div class="rooms">
-      {% for room in my_rooms %}
-      <article class="card stack room-card">
-        <div class="room-head">
-          <div>
-            <h2>{{ room.place_name }}</h2>
-            <p>{{ room.course_code }} · {{ room.when }}{% if user and room.host_id == user.id %} · you are the host{% endif %}</p>
-          </div>
-          <span class="chip">{{ room.open_seats }} open</span>
-        </div>
-        <ul class="attendees">
-          {% for member in room.members %}
-          <li>
-            <strong>{{ member.first_name }}{% if member.id == room.host_id %} · host{% endif %}{% if user and member.id == user.id %} · you{% endif %}</strong>
-            <span class="degree">{{ member.major }} · year {{ member.year }}</span>
-          </li>
-          {% endfor %}
-        </ul>
-        <form method="post" action="/session/rooms/{{ room.id }}/leave">
-          {% if ready %}
-          <input type="hidden" name="course_id" value="{{ course.id }}">
-          <input type="hidden" name="starts_at" value="{{ starts_at }}">
-          <input type="hidden" name="ends_at" value="{{ ends_at }}">
-          <input type="hidden" name="place_type" value="{{ place_type }}">
-          <input type="hidden" name="note" value="{{ note }}">
-          <input type="hidden" name="study_anyway" value="{{ '1' if study_anyway else '0' }}">
-          <input type="hidden" name="sentence" value="{{ sentence }}">
-          {% endif %}
-          <button class="button quiet" type="submit">Leave</button>
-        </form>
-      </article>
-      {% endfor %}
+      {% for room in my_rooms %}{{ rm.room_card(room, "mine") }}{% endfor %}
     </div>
     {% else %}
     <p class="empty-sessions">No current sessions.</p>
@@ -76,7 +47,7 @@
         <a class="button quiet" href="/session?fresh=1">Start over</a>
       </div>
     </form>
-    {% else %}
+    {% elif not ready %}
     <form method="post" action="/session/interpret" class="card stack">
       <label class="field">
         <span class="label">What do you want to study?</span>
@@ -84,7 +55,6 @@
       </label>
       <div class="cluster">
         <button class="button primary" type="submit">Find a study mate</button>
-        {% if ready or thread %}<a class="button quiet" href="/session?fresh=1">Start over</a>{% endif %}
       </div>
     </form>
     {% endif %}

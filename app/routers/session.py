@@ -557,6 +557,7 @@ def _decorate_room(room: dict, user_id: str) -> dict:
         **room,
         "when": "Any time" if flexible else pretty_range(room["starts_at"], room["ends_at"]),
         "clock_label": "Any time" if flexible else (f"{clock(start)}–{clock(end)}" if start and end else ""),
+        "day_label": f"{start:%a} {start.day} {start:%b}" if start else "",
         "names": ", ".join(person["first_name"] for person in room["members"]) or "Empty",
         "taken": taken,
         "open_seats": max(0, room["capacity"] - taken),
@@ -656,11 +657,6 @@ def _schedule_view(
         rooms = room_matching.hard_filter(rooms, asked, user_id)
         ranking = room_matching.rank(rooms, user_id, course_id, starts_at, ends_at, place_type, note)
         rooms = room_matching.apply(rooms, ranking)
-        anytime = _is_anytime_span(starts_at, ends_at)
-        for room in rooms:
-            room["fits"] = room_matching.reasons(
-                room, asked, _course_record(course_id)["code"], None if anytime else (starts_at, ends_at),
-            )
     selected = opened_room(open_room, user_id) if open_room else None
     if selected and selected["id"] not in {room["id"] for room in rooms}:
         selected = None
@@ -1050,10 +1046,10 @@ _SETTINGS_NOTICES = {
 def change_room_settings(
     request: Request,
     room_id: str,
-    course_id: str = Form(...),
-    starts_at: str = Form(...),
-    ends_at: str = Form(...),
-    place_type: str = Form(...),
+    course_id: str = Form(""),
+    starts_at: str = Form(""),
+    ends_at: str = Form(""),
+    place_type: str = Form(""),
     note: str = Form(""),
     study_anyway: str = Form("0"),
     sentence: str = Form(""),
@@ -1064,7 +1060,12 @@ def change_room_settings(
     room_start: str = Form(...),
     room_end: str = Form(...),
 ):
-    keep = dict(sentence=sentence, open_room=room_id)
+    def back(notice: str = "", error: str = "") -> RedirectResponse:
+        if not starts_at:  # Saved from "Your sessions", with no search on the page.
+            return _schedule_redirect(room_id, error or notice, True)
+        return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, notice,
+                                 sentence=sentence, open_room=room_id, error=error)
+
     chosen = _picked_time(room_day, room_start, room_end)
     place = next((item for item in _place_options() if item["name"] == room_place), None)
     try:
@@ -1072,24 +1073,21 @@ def change_room_settings(
     except ValueError:
         capacity = 0
     if chosen is None or place is None:
-        return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, **keep,
-                                 error="Choose a place, a day, and a start time earlier than the end time.")
+        return back(error="Choose a place, a day, and a start time earlier than the end time.")
     user = request.session.get("user") or {}
     room = next((item for item in store.rooms() if item["id"] == room_id), None)
     if room and room["host_id"] == user.get("id") and (chosen[0], chosen[1]) != (room["starts_at"], room["ends_at"]):
         try:
             check_room_time(request, [p["id"] for p in room["members"]], chosen[0], chosen[1], room_id=room_id)
         except ValueError as exc:
-            return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, **keep, error=str(exc))
+            return back(error=str(exc))
     course = _course_record(room_course)
     result = store.update_room_settings(
         room_id, user.get("id", ""), course_id=course["id"], course_code=course["code"], place_type=place["kind"],
         place_name=place["name"], capacity=capacity, starts_at=chosen[0], ends_at=chosen[1],
     )
     notice = _SETTINGS_NOTICES.get(result, _SETTINGS_NOTICES["missing"])
-    if result != "updated":
-        return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, **keep, error=notice)
-    return _redirect_session(course_id, starts_at, ends_at, place_type, note, study_anyway, notice, **keep)
+    return back(notice) if result == "updated" else back(error=notice)
 
 
 @router.post("/session/rooms/{room_id}/time")

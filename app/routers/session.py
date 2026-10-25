@@ -1143,6 +1143,9 @@ def join_room(
                                      sentence=sentence, open_room=room_id, error=str(exc))
     result = store.join_room(room_id, _member(request))
     notice = _ROOM_NOTICES.get(result, "That room is no longer open.")
+    if result in {"joined", "switched", "already"}:
+        request.session.pop("study_thread", None)
+        return RedirectResponse("/session?notice=" + quote(notice), status_code=303)
     if not starts_at:
         return _schedule_redirect(room_id, notice, result != "missing")
     return _redirect_session(
@@ -1152,7 +1155,7 @@ def join_room(
         place_type,
         note,
         study_anyway,
-        _ROOM_NOTICES.get(result, "That room is no longer open."),
+        notice,
         sentence=sentence,
         open_room=room_id,
     )

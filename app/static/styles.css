@@ -309,6 +309,7 @@ code {
   gap: 12px;
 }
 
+.room-head h2,
 .room-head h3,
 .room-head p,
 .room-create h3,

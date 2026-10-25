@@ -55,6 +55,17 @@ _DAYS = {
     "thursday": 29,
     "friday": 30,
     "saturday": 31,
+    # Short forms people type. Each matches whole words only, so "wed" never matches "wednesday".
+    "sun": 25,
+    "mon": 26,
+    "tue": 27,
+    "tues": 27,
+    "wed": 28,
+    "thu": 29,
+    "thur": 29,
+    "thurs": 29,
+    "fri": 30,
+    "sat": 31,
 }
 _PARTS = {
     "morning": ("09:00", "12:00"),
@@ -265,7 +276,14 @@ def _course_from_text(text: str, courses: list[dict]) -> str | None:
             rf"\b{re.escape(compact)}\b", text, re.IGNORECASE
         ):
             return course["id"]
-    return _subject_request(text)
+    spoken = _subject_request(text)
+    if spoken:
+        return spoken
+    partial = _SPECIFIC_COURSE.search(text)
+    if partial and _family(partial.group(0)) in _SUBJECT_LABELS:
+        # "cs61" is not a catalog code (61A, 61B, ...), so keep its subject instead of dropping it.
+        return f"subject:{_family(partial.group(0))}"
+    return None
 
 
 def _mentioned_place(text: str) -> str:
@@ -622,8 +640,7 @@ def _schedule_view(
         anytime = _is_anytime_span(starts_at, ends_at)
         for room in rooms:
             room["fits"] = room_matching.reasons(
-                room, asked, _course_record(course_id)["code"],
-                None if anytime else pretty_range(starts_at, ends_at),
+                room, asked, _course_record(course_id)["code"], None if anytime else (starts_at, ends_at),
             )
     selected = opened_room(open_room, user_id) if open_room else None
     if selected and selected["id"] not in {room["id"] for room in rooms}:

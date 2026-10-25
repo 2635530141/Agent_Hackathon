@@ -113,7 +113,8 @@ def test_private_two_users_csrf_state_and_timetable_isolation(private_host):
         saved = one.post("/schedule/timetable",data={"csrf_token":a,"entry_kind":"free","starts_at":"2026-10-26T13:00","ends_at":"2026-10-26T14:00"})
         assert saved.status_code == 303
         assert any(e["kind"]=="free" for e in one.get("/api/schedule/week?day=2026-10-26").json()["entries"])
-        assert two.get("/api/schedule/week?day=2026-10-26").json()["entries"] == []
+        # User two sees only their own free-time bands, never user one's entries.
+        assert [e for e in two.get("/api/schedule/week?day=2026-10-26").json()["entries"] if e["kind"] != "available"] == []
         assert two.get("/api/schedule/week?day=2026-10-26&owner_id=u_maya").status_code == 403
         begin = one.get("/calendar/google/connect")
         state = parse_qs(urlsplit(begin.headers["location"]).query)["state"][0]

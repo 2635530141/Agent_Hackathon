@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Schedule · StudyMate{% endblock %}
 {% block feature_styles %}<link rel="stylesheet" href="/static/calendar.css?v=8">{% endblock %}
-{% block feature_scripts %}<script src="/static/calendar.js?v=8" defer></script>{% endblock %}
+{% block feature_scripts %}<script src="/static/calendar.js?v=9" defer></script>{% endblock %}
 {% block content %}
 <div class="calendar-page">
   <h1 class="sr-only">Schedule and calendar</h1>
   {% if error %}<div class="callout warn"><p>{{ error }}</p></div>{% endif %}
   {% if saved %}<div class="callout good calendar-saved" role="status"><p>Saved.</p></div>{% endif %}
-  {% include "partials/calendar_connection.html" %}
+  {% if conflict_result %}<div class="callout" role="status"><p>{{ conflict_result.title or conflict_result.message }}</p>{% if conflict_result.alternative_start %}<p>Alternative: {{ conflict_result.alternative_start }} – {{ conflict_result.alternative_end }}</p>{% endif %}</div>{% endif %}
   {% include "partials/calendar_week.html" %}
 </div>
 {% endblock %}

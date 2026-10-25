@@ -131,10 +131,8 @@ def test_real_port_probe_detects_existing_listener():
         assert calendar_start.port_available(listener.getsockname()[1]) is False
 
 
-def test_team_setup_page_explains_account_and_google_boundaries():
+def test_retired_google_setup_page_is_not_exposed():
     with TestClient(app) as browser:
         browser.post("/login", data={"email":accounts.TEST_EMAIL, "password":accounts.TEST_PASSWORD})
         response = browser.get("/schedule/google-setup")
-        assert response.status_code == 200
-        for instruction in ("Start-Calendar.cmd", "redirect_uri_mismatch", "Testing", "private local account"):
-            assert instruction in response.text
+        assert response.status_code == 404

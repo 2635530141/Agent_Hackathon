@@ -258,8 +258,8 @@ def test_default_host_rejects_fake_identity_and_forged_headers():
             "password":accounts.TEST_PASSWORD},follow_redirects=False).status_code == 303
         for path in ("connect","callback?code=synthetic&state=synthetic"):
             response = client.get("/calendar/google/"+path,headers={"X-User-ID":store.OWNER_ID,"Authorization":"Bearer synthetic"})
-            assert response.status_code==409
-        assert client.post("/calendar/google/refresh",json={"trusted":True,"owner_id":store.OWNER_ID}).status_code==409
+            assert response.status_code==404
+        assert client.post("/calendar/google/refresh",json={"trusted":True,"owner_id":store.OWNER_ID}).status_code==404
 
 
 def test_authenticated_mock_http_flow_csrf_callback_disconnect_and_redacted_logs(setup_google,caplog):

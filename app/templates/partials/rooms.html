@@ -2,7 +2,7 @@
   <div class="stack">
     <p class="session-summary"><strong>{{ course.code }}</strong> · {{ asked_when or when }} · {{ place_labels[place_type] }}{% if note %} · {{ note }}{% endif %}</p>
     {% if conflict %}
-    <p class="hint">{{ conflict.title }} overlaps this time.{% if alternative_href %} <a href="{{ alternative_href }}">Try {{ alternative_label }} instead.</a>{% else %} No feasible alternative fits the checked study hours.{% endif %}</p>
+    <p class="hint">{{ conflict.title }} overlaps this time.{% if alternative_href %} <a href="{{ alternative_href }}">Try {{ alternative_label }} instead.</a>{% else %} No feasible alternative inside your window.{% endif %}</p>
     {% elif anytime %}
     <p class="hint">Every open room for this course. Nothing is reserved until you choose Join.</p>
     {% endif %}

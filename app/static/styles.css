@@ -75,21 +75,30 @@ code {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 16px;
+  min-height: 64px;
   padding: 14px 24px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--line);
 }
 
+.site-header .cluster {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
 .wordmark {
+  flex-shrink: 0;
   color: var(--ink);
   text-decoration: none;
   font-size: 22px;
+  line-height: 1;
 }
 
 .site-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
 }
 
@@ -98,6 +107,7 @@ code {
   text-decoration: none;
   padding: 6px 10px;
   border-radius: 999px;
+  white-space: nowrap;
 }
 
 .site-nav a[aria-current="page"] {
@@ -759,11 +769,6 @@ textarea {
   .index a,
   .hours li {
     grid-template-columns: 1fr;
-  }
-
-  .site-header {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .title {

@@ -17,10 +17,12 @@ from datetime import datetime, timedelta
 from app import advise as advise_step
 from app import matching_prompt, schedule_core, store
 from app.profile_core import STYLE_LABELS, eligible_student_ids, public_profile, public_profile_of
-from app.scheduling.time import local_iso, parse_instant
+from app.scheduling.time import display_zone, local_iso, parse_instant
+from zoneinfo import ZoneInfo
 
 log = logging.getLogger(__name__)
 
+LOCAL = ZoneInfo(display_zone())
 ROOM_LIMIT = 12
 BIO_LIMIT = 300
 MIN_OVERLAP = timedelta(hours=1)
@@ -168,19 +170,32 @@ def hard_filter(rooms: list[dict], asked: Asked, user_id: str) -> list[dict]:
     return [room for room in rooms if room.get("joined") or room["host_id"] == user_id or meets(room, asked)]
 
 
-def reasons(room: dict, asked: Asked, course_label: str, asked_when: str | None) -> list[str]:
+def _clock(value: datetime) -> str:
+    return value.strftime("%I:%M %p").lstrip("0")
+
+
+def reasons(room: dict, asked: Asked, course_label: str, window: tuple[str, str] | None) -> list[str]:
     """Why this room is a match, one line per factor, from facts rather than the model."""
     lines = []
-    if asked_when:
-        lines.append(f"Fits your time: {room['clock_label'] or room['when']}, inside {asked_when}.")
+    if window:
+        start, end = (parse_instant(value).astimezone(LOCAL) for value in window)
+        room_start, room_end = (parse_instant(room[key]).astimezone(LOCAL) for key in ("starts_at", "ends_at"))
+        if start <= room_start and room_end <= end:
+            lines.append(f"Fits your time: {_clock(room_start)}–{_clock(room_end)} is inside your {_clock(start)}–{_clock(end)}.")
+        else:
+            shared = (max(start, room_start), min(end, room_end))
+            lines.append(f"Fits your time: you share {_clock(shared[0])}–{_clock(shared[1])} "
+                         f"(room runs {_clock(room_start)}–{_clock(room_end)}).")
     if room["course_code"] == course_label:
         lines.append(f"{course_label}, as you asked.")
     elif room["course_id"] == "subject:any":
         lines.append(f"Open to any subject, so {course_label} is welcome.")
     elif course_label == "Any subject":
         lines.append(f"{room['course_code']}; you are open to any subject.")
+    elif course_label.startswith("Any "):
+        lines.append(f"{room['course_code']} is one of {course_label[4:].replace(' course', ' courses')}, as you asked.")
     else:
-        lines.append(f"{room['course_code']} covers {course_label}.")
+        lines.append(f"{room['course_code']} includes {course_label}.")
     if asked.place:
         lines.append(f"{room['place_name']} is {PLACE_WORDS[asked.place]}, as you asked.")
     if asked.avoid:

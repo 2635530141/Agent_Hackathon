@@ -7,7 +7,7 @@
     <form method="post" action="/schedule/calendar"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button primary" type="submit">{{ "Reconnect Google Calendar" if calendar.connected else "Connect Google Calendar" }}</button></form>
     {% if calendar.connected %}
     <form method="post" action="/schedule/calendar/refresh"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="day" value="{{ selected_day }}"><button class="button" type="submit">Refresh Google Calendar</button></form>
-    <details><summary>Disconnect</summary><p>Remove this app's saved Google credentials and cached calendar events. Your study hours and exams stay saved. Google account permissions can also be removed in your Google account.</p><form method="post" action="/schedule/calendar/disconnect"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button quiet" type="submit">Confirm disconnect</button></form></details>
+    <details><summary>Disconnect</summary><p>Remove this app's saved Google credentials and cached calendar events. Your exams and busy times stay saved. Google account permissions can also be removed in your Google account.</p><form method="post" action="/schedule/calendar/disconnect"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button quiet" type="submit">Confirm disconnect</button></form></details>
     {% endif %}
   </div>
   <details><summary>Timezone and conflict check</summary>

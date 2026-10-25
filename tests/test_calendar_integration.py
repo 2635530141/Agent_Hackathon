@@ -46,7 +46,8 @@ def snapshot():
 
 def test_core_acceptance_and_matching_share_repository():
     runtime, _ = prepare()
-    assert local_pairs(snapshot()) == [("13:00","14:00"),("15:00","16:00"),("17:00","18:00")]
+    # No study hours: the whole day is free except the busy blocks (14:00 and 16:00).
+    assert local_pairs(snapshot()) == [("00:00","14:00"),("15:00","16:00"),("17:00","00:00")]
     me = matching_core.load_inputs().me
     available = matching_core.free_time(me, parse_instant("2026-10-26T00:00"),parse_instant("2026-10-27T00:00"))
     assert available == [(i.start,i.end) for i in snapshot().available]
@@ -115,12 +116,12 @@ def test_no_alternative_renders_without_crashing():
         assert "Try " not in response.text.split("overlaps this time.")[1].split("</p>")[0]
 
 
-def test_free_exception_not_busy_priority_never_grants_hours():
+def test_study_hours_no_longer_limit_free_time():
     prepare()
     schedule_core.save_weekly({})
-    assert snapshot().available == []
+    assert local_pairs(snapshot()) == [("00:00","14:00"),("15:00","16:00"),("17:00","00:00")]
     schedule_core.create_exception("2026-10-26T13:00","2026-10-26T18:00","free")
-    assert local_pairs(snapshot()) == [("13:00","14:00"),("15:00","16:00"),("17:00","18:00")]
+    assert local_pairs(snapshot()) == [("00:00","14:00"),("15:00","16:00"),("17:00","00:00")]
     assert all(b.source != "weekly" for b in schedule_core.list_busy_for_match())
 
 
@@ -183,7 +184,7 @@ def test_form_timezone_preserves_instant_and_rejects_dst_ambiguity():
 def test_demo_google_connection_never_toggles_live():
     with demo_client() as client:
         response = client.post("/schedule/calendar")
-        assert response.status_code == 200 and "fixed demo identity cannot connect" in response.text
+        assert response.status_code == 404
     assert schedule_core.calendar_status()["connected"] is False
 
 
@@ -217,14 +218,14 @@ def test_team_login_gate_and_other_demo_account_cannot_read_owner_private_view(m
         assert client.get("/schedule").status_code == 403
         assert client.get("/api/schedule/busy").status_code == 403
         # A demo login does not establish a trusted Google actor.
-        assert client.get("/calendar/google/connect").status_code == 409
+        assert client.get("/calendar/google/connect").status_code == 404
 
 
 def test_synthetic_refresh_updates_owner_and_candidate_pool():
     runtime = get_runtime()
     runtime.repository.begin_refresh("u_jordan")
     with demo_client() as client:
-        assert client.post("/schedule/calendar/refresh").status_code == 200
+        assert client.post("/schedule/recalculate").status_code == 200
     assert runtime.repository.read_bundle("u_jordan")["state"]["connection_status"] == "synced"
 
 

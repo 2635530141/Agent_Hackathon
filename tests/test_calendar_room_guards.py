@@ -76,7 +76,7 @@ def test_room_picker_checks_actual_selected_time(runtime, browser):
     assert response.status_code == 303 and store.rooms() == []
 
 
-@pytest.mark.parametrize("block", ["manual", "calendar", "unknown", "outside", "invalid"])
+@pytest.mark.parametrize("block", ["manual", "calendar", "unknown", "invalid"])
 def test_room_creation_rejects_other_calendar_failures(runtime, browser, block):
     start, end = 16, 17
     if block == "manual":
@@ -88,13 +88,17 @@ def test_room_creation_rejects_other_calendar_failures(runtime, browser, block):
             private_title="SYNTHETIC_TITLE_MUST_STAY_PRIVATE")]
     elif block == "unknown":
         runtime.service.provider.failure_mode = "timeout"
-    elif block == "outside":
-        start, end = 18, 19
     else:
         start, end = 17, 16
     response = open_room(browser, start, end)
     assert response.status_code == 303 and store.rooms() == []
     assert "SYNTHETIC_TITLE_MUST_STAY_PRIVATE" not in unquote(response.headers["location"])
+
+
+def test_room_outside_former_study_hours_opens(runtime, browser):
+    # 18:00-19:00 used to be outside study hours; with no busy block it is free now.
+    response = open_room(browser, 18, 19)
+    assert response.status_code == 303 and len(store.rooms()) == 1
 
 
 @pytest.mark.parametrize("posted_time", [False, True])

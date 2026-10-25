@@ -23,7 +23,8 @@ THU = ("2026-10-29T18:00", "2026-10-29T21:00")
 @pytest.fixture(autouse=True)
 def fresh_calendar(monkeypatch):
     get_runtime().service.refresh_calendar(Actor(subject_id=store.OWNER_ID), FIXTURE_HORIZON)
-    monkeypatch.setattr(store, "_rooms", store.rooms())
+    # Marc's seed opens rooms all week; these tests pin the three hand-made rooms they describe.
+    monkeypatch.setattr(store, "_rooms", [r for r in store.rooms() if r["id"] in ("room_doe_thu", "room_yali_thu", "room_doe_wed")])
 
 
 def kept(said, course_id="subject:cs"):
@@ -82,16 +83,21 @@ def test_a_named_course_is_hard_and_a_subject_is_a_range(asked, room, fits):
 def test_reasons_name_each_factor_that_was_asked():
     rooms = {r["id"]: r for r in s.rooms_you_can_join("u_maya", "cs61a", *THU)}
     asked = s._asked_factors("CS 61A thursday 6 to 9 in the lib, group of 4")
-    lines = room_matching.reasons(rooms["room_doe_thu"], asked, "CS 61A", "Thu 29 Oct, 6:00 PM–9:00 PM")
+    lines = room_matching.reasons(rooms["room_doe_thu"], asked, "CS 61A", THU)
     assert lines == [
-        "Fits your time: 7:00 PM–9:00 PM, inside Thu 29 Oct, 6:00 PM–9:00 PM.",
-        "Any CS course covers CS 61A.",
+        "Fits your time: 7:00 PM–9:00 PM is inside your 6:00 PM–9:00 PM.",
+        "Any CS course includes CS 61A.",
         "Doe Library is a library, as you asked.",
         "A room for 4, as you asked.",
         "2 seats open.",
     ]
     exact = room_matching.reasons(rooms["room_yali_thu"], room_matching.Asked(), "CS 61A", None)
     assert exact == ["CS 61A, as you asked.", "1 seat open."]
+    late = room_matching.reasons(rooms["room_doe_thu"], room_matching.Asked(), "Any CS course",
+                                 ("2026-10-29T20:00", "2026-10-29T21:00"))
+    assert late[0] == "Fits your time: you share 8:00 PM–9:00 PM (room runs 7:00 PM–9:00 PM)."
+    assert room_matching.reasons(rooms["room_yali_thu"], room_matching.Asked(), "Any CS course", None)[0] == (
+        "CS 61A is one of CS courses, as you asked.")
 
 
 # Room settings

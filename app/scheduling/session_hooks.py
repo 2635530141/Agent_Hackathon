@@ -57,7 +57,7 @@ def check_room_time(request, participant_ids, starts_at, ends_at):
     if "EXAM_BUSY" in codes:
         raise ValueError("That time overlaps a participant's exam. Choose another time.")
     if codes:
-        raise ValueError("That time is outside a participant's study hours or overlaps a busy block. Choose another time.")
+        raise ValueError("That time overlaps a participant's busy time. Choose another time.")
 
 
 def refresh_before_request(request):

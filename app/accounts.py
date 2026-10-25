@@ -1,13 +1,20 @@
-"""Demo accounts. Passwords stay here, never on a profile or an invite."""
+"""Accounts. Passwords stay here, never on a profile or an invite.
+
+Stored in the database from app.db (Supabase Postgres when DATABASE_URL is set),
+or in memory when STUDYMATE_DB=memory.
+"""
 
 import hashlib
 import hmac
+from secrets import token_hex
 from uuid import uuid4
 
+from app import db
 from app.store import next_id
 
 TEST_EMAIL = "maya@example.edu"
 TEST_PASSWORD = "studymate"
+TIMEZONE = "America/Los_Angeles"
 
 _accounts: dict[str, dict] = {}
 
@@ -26,14 +33,45 @@ def _public(account: dict) -> dict:
     return {"id": account["id"], "name": account["name"], "email": account["email"]}
 
 
+def _by_email(email: str) -> dict | None:
+    if not db.enabled():
+        return _accounts.get(email)
+    from sqlalchemy import select
+    with db.reader() as connection:
+        row = connection.execute(select(db.accounts).where(db.accounts.c.email == email)).mappings().first()
+    return dict(row) if row else None
+
+
+def get(user_id: str) -> dict | None:
+    """Name and email for an account id."""
+    if not db.enabled():
+        found = next((account for account in _accounts.values() if account["id"] == user_id), None)
+        return _public(found) if found else None
+    from sqlalchemy import select
+    with db.reader() as connection:
+        row = connection.execute(select(db.accounts).where(db.accounts.c.id == user_id)).mappings().first()
+    return _public(row) if row else None
+
+
+def all_ids() -> list[str]:
+    seed()
+    if not db.enabled():
+        return [account["id"] for account in _accounts.values()]
+    from sqlalchemy import select
+    with db.reader() as connection:
+        return list(connection.execute(select(db.accounts.c.id)).scalars())
+
+
 def authenticate(email: str, password: str) -> dict | None:
-    account = _accounts.get(email.strip().lower())
+    seed()
+    account = _by_email(email.strip().lower())
     if account is None or not _matches(password, account["password_hash"]):
         return None
     return _public(account)
 
 
 def register(name: str, email: str, password: str) -> dict:
+    seed()
     clean_name = " ".join(name.split())
     clean_email = email.strip().lower()
     if len(clean_name) < 2:
@@ -42,30 +80,34 @@ def register(name: str, email: str, password: str) -> dict:
         raise ValueError("Enter a real email address.")
     if len(password) < 8:
         raise ValueError("Use at least 8 characters.")
-    if clean_email in _accounts:
+    if _by_email(clean_email):
         raise ValueError("That email already has an account. Sign in instead.")
     account = {
         "id": "user_" + uuid4().hex,
         "name": clean_name,
         "email": clean_email,
-        "password_hash": _hash(password, next_id("salt")),
+        "password_hash": _hash(password, next_id("salt") + token_hex(8)),
     }
-    _accounts[clean_email] = account
+    if not db.enabled():
+        _accounts[clean_email] = account
+        return _public(account)
+    from sqlalchemy.exc import IntegrityError
+    try:
+        with db.engine().begin() as connection:
+            connection.execute(db.accounts.insert().values(**account, timezone=TIMEZONE))
+    except IntegrityError:
+        raise ValueError("That email already has an account. Sign in instead.") from None
     return _public(account)
 
 
 def seed() -> None:
-    if TEST_EMAIL in _accounts:
+    """The demo login, maya@example.edu, exists in every store."""
+    maya = {"id": "u_maya", "name": "Maya Chen", "email": TEST_EMAIL, "password_hash": _hash(TEST_PASSWORD, "maya")}
+    if not db.enabled():
+        _accounts.setdefault(TEST_EMAIL, maya)
         return
-    _accounts[TEST_EMAIL] = {
-        "id": "u_maya",
-        "name": "Maya Chen",
-        "email": TEST_EMAIL,
-        "password_hash": _hash(TEST_PASSWORD, "maya"),
-    }
-
-
-seed()
+    with db.engine().begin() as connection:
+        connection.execute(db.insert_ignore(db.accounts, **maya, timezone=TIMEZONE))
 
 
 class PersistentAccounts:

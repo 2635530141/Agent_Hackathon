@@ -1,16 +1,21 @@
-"""SQLite scheduling repository. Private event metadata is in its own table.
+"""Scheduling repository on SQLite (local, tests) or Postgres (Supabase via DATABASE_URL).
 
-Explicit schema migration only; no DB connections or migrations on import.
-Postgres compatibility must be verified separately before integration.
+Private event metadata is in its own table. Explicit schema migration only; no DB
+connections or migrations on import. On Postgres the tables come from the
+SQLAlchemy definitions below instead of the SQLite migration files.
 """
+import threading
+import time
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from uuid import uuid4
 
 from pydantic import BaseModel
 from sqlalchemy import (Column, DateTime, Integer, JSON, MetaData, String, Table, event, inspect,
                         create_engine, delete, insert, select, update)
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.engine import make_url
 from sqlalchemy.types import TypeDecorator
 
@@ -73,11 +78,48 @@ INPUTS = {"weekly-rules": WeeklyRuleInput, "exceptions": ExceptionInput, "exams"
 MODELS = {"weekly-rules": WeeklyRule, "exceptions": ScheduleException, "exams": Exam}
 
 
+class _ReadsWithoutTransaction:
+    """Postgres engine whose plain connect() reads skip BEGIN/ROLLBACK (one round trip, not three).
+
+    engine.begin() is unchanged, so every write still runs in a real transaction.
+    """
+
+    def __init__(self, engine):
+        self._engine = engine
+        self.on_write = lambda: None
+
+    def connect(self):
+        return self._engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+
+    @contextmanager
+    def begin(self):
+        # Every write runs through begin(): drop cached reads before it and again once it commits.
+        self.on_write()
+        with self._engine.begin() as connection:
+            yield connection
+        self.on_write()
+
+    def __getattr__(self, name):
+        return getattr(self._engine, name)
+
+
 class SQLiteScheduleRepository:
     def __init__(self, url: str):
         parsed = make_url(url)
-        if parsed.get_backend_name() != "sqlite":
-            raise ValueError("M1 repository supports SQLite only; Postgres is not verified")
+        self.is_sqlite = parsed.get_backend_name() == "sqlite"
+        if not self.is_sqlite:
+            if parsed.get_backend_name() != "postgresql":
+                raise ValueError("The schedule repository supports SQLite and Postgres only")
+            # No pre-ping (a round trip each); recycle idle connections instead. Supabase's
+            # transaction pooler (port 6543) cannot reuse prepared statements.
+            self.raw_engine = create_engine(url, echo=False, hide_parameters=True, pool_recycle=300,
+                                            connect_args={"prepare_threshold": None})
+            self.engine = _ReadsWithoutTransaction(self.raw_engine)
+            # One page reads the same schedule many times; each cloud round trip is ~100 ms.
+            self._bundles: dict[str, tuple[float, dict]] = {}
+            self._bundle_lock = threading.Lock()
+            self.engine.on_write = self._bundles.clear
+            return
         self.engine = create_engine(url, echo=False, hide_parameters=True,
                                     connect_args={"check_same_thread": False, "timeout": 10})
         # Explicit BEGIN also covers SELECTs and DDL on Python's legacy sqlite3 driver.
@@ -90,8 +132,20 @@ class SQLiteScheduleRepository:
         def explicit_begin(connection):
             connection.exec_driver_sql("BEGIN")
 
+    def _insert_ignore(self, table, **values):
+        dialect = sqlite if self.is_sqlite else postgresql
+        return dialect.insert(table).values(**values).on_conflict_do_nothing()
+
     def migrate(self):
-        """Apply M1 schema v1 explicitly on startup/seed, only to the configured local DB."""
+        """Apply the schema explicitly on startup/seed, only to the configured DB."""
+        if not self.is_sqlite:
+            from app.db import lock_down
+            metadata.create_all(self.raw_engine)
+            lock_down(self.raw_engine, metadata.sorted_tables)
+            with self.engine.begin() as conn:
+                if not conn.execute(select(versions.c.version)).scalars().all():
+                    conn.execute(insert(versions).values(version=2))
+            return
         database = self.engine.url.database
         if database and database != ":memory:":
             Path(database).resolve().parent.mkdir(parents=True, exist_ok=True)
@@ -115,8 +169,7 @@ class SQLiteScheduleRepository:
         self.engine.dispose()
 
     def _ensure_state(self, conn, owner_id):
-        # SQLite INSERT OR IGNORE is scoped to the M1 repository.
-        conn.execute(insert(states).values(owner_id=owner_id).prefix_with("OR IGNORE"))
+        conn.execute(self._insert_ignore(states, owner_id=owner_id))
 
     def _bump(self, conn, owner_id):
         self._ensure_state(conn, owner_id)
@@ -161,10 +214,25 @@ class SQLiteScheduleRepository:
                 self._bump(conn, owner_id)
         return bool(changed)
 
+    BUNDLE_SECONDS = 2
+
     def read_bundle(self, owner_id):
-        # A single read transaction gives the schedule and busy intervals one consistent view.
-        # No query here references the private metadata table.
-        with self.engine.begin() as conn:
+        if self.is_sqlite:
+            return self._read_bundle(owner_id)
+        # Postgres: reuse a read from the last two seconds; any write through begin() clears it.
+        with self._bundle_lock:
+            hit = self._bundles.get(owner_id)
+            if hit and hit[0] > time.monotonic():
+                return deepcopy(hit[1])
+        bundle = self._read_bundle(owner_id)
+        with self._bundle_lock:
+            self._bundles[owner_id] = (time.monotonic() + self.BUNDLE_SECONDS, bundle)
+        return deepcopy(bundle)
+
+    def _read_bundle(self, owner_id):
+        # On SQLite a single read transaction gives one consistent view. On Postgres the three
+        # reads run without BEGIN/COMMIT to save round trips. No query references private metadata.
+        with (self.engine.begin() if self.is_sqlite else self.engine.connect()) as conn:
             state = conn.execute(select(states).where(states.c.owner_id == owner_id)).mappings().first()
             all_records = conn.execute(select(records).where(records.c.owner_id == owner_id)
                                        .order_by(records.c.id)).mappings().all()
@@ -250,7 +318,8 @@ class SQLiteScheduleRepository:
     def seed_once(self, marker, owner_ids, seed_records, snapshots, now):
         """Atomic and non-destructive, including when seeded records were later edited/deleted."""
         with self.engine.begin() as conn:
-            inserted = conn.execute(insert(markers).values(key=marker).prefix_with("OR IGNORE")).rowcount
+            # rowcount is -1 ("unknown") through some Postgres poolers, so ask for the row back.
+            inserted = conn.execute(self._insert_ignore(markers, key=marker).returning(markers.c.key)).first()
             if not inserted:
                 return False
             for owner_id in owner_ids:

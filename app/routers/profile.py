@@ -3,7 +3,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Body, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from app import profile_core
+from app import profile_core, store
 from app.web import render
 
 router = APIRouter()
@@ -17,6 +17,7 @@ def profile_page(request: Request, error: str = "", saved: int = 0):
         "profile.html",
         nav="profile",
         profile=profile,
+        complete=store.is_complete(profile.model_dump()),
         course_text=profile_core.course_codes(profile.course_ids),
         anchor_map=profile_core.maps_url(profile.anchor_lat, profile.anchor_lng),
         style_labels={key: profile_core.STYLE_LABELS[key] for key in profile_core.STUDY_STYLES},

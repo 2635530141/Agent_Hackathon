@@ -39,3 +39,15 @@ def no_live_room_ranking(monkeypatch):
 
     monkeypatch.setattr(room_matching, "client", lambda: Unavailable())
     monkeypatch.setattr(store, "_room_rankings", {})
+
+
+@pytest.fixture(autouse=True)
+def memory_data(monkeypatch):
+    """Accounts, profiles, and rooms stay in memory; no test touches Supabase or a local DB file."""
+    from app import accounts
+    monkeypatch.setenv("STUDYMATE_DB", "memory")
+    monkeypatch.setattr(store, "_profiles", {})
+    monkeypatch.setattr(accounts, "_accounts", {})
+    store._cache.clear()
+    yield
+    store._cache.clear()

@@ -37,7 +37,7 @@ def check_room_time(request, participant_ids, starts_at, ends_at, *, room_id=Non
         else:
             from app import accounts
             known = {store.OWNER_ID, current_id, *(person["id"] for person in store.others()),
-                     *(account["id"] for account in accounts._accounts.values())}
+                     *accounts.all_ids()}
             if not current_id or not subject_ids <= known:
                 raise AuthorizationError()
             context = TrustedMatchContext(eligible_subject_ids=frozenset(subject_ids))

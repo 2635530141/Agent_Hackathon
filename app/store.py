@@ -1,12 +1,18 @@
-"""In-memory seed. Postgres replaces this module later.
+"""Seed data and the app's data access.
 
-Target tables: students, courses, student_courses, availability_slots, exams,
-calendar_busy_intervals, requests, proposals, proposal_candidates, places_cache,
-invitations, feedback.
+Accounts, profiles, the course catalog, and rooms are stored through app.db
+(Supabase Postgres when DATABASE_URL is set, a local file otherwise). The lists
+below are the demo seed. With STUDYMATE_DB=memory (tests) everything stays here.
 """
 
+import threading
+import time
 from copy import deepcopy
 from datetime import datetime
+from functools import wraps
+from uuid import uuid4
+
+from app import db
 
 OWNER_ID = "u_maya"
 
@@ -291,42 +297,163 @@ def next_id(prefix: str) -> str:
 
 
 def courses() -> list[dict]:
-    return deepcopy(COURSES)
+    if not db.enabled():
+        return deepcopy(COURSES)
+    _ensure_seeded()
+    known = {course["id"]: course for course in COURSES}
+    for course in _cached("courses", db.load_courses):
+        known.setdefault(course["id"], course)
+    return deepcopy(list(known.values()))
 
 
 def course_by_id(course_id: str) -> dict | None:
-    for course in COURSES:
+    for course in courses():
         if course["id"] == course_id:
-            return deepcopy(course)
+            return course
     return None
 
 
 def add_course(course: dict) -> None:
     """Students type their own course codes; new ones join the shared catalog."""
-    if course_by_id(course["id"]) is None:
+    if course_by_id(course["id"]) is not None:
+        return
+    if db.enabled():
+        db.save_course(course)
+        _forget("courses")
+    else:
         COURSES.append(dict(course))
 
 
+# Profiles: one per account. The signed-in account is "me"; everyone else with a
+# finished profile is someone matching can compare against.
+
+_profiles: dict[str, dict] = {}  # Accounts made in memory mode, by id.
+_cache: dict[str, tuple[float, object]] = {}
+_seeded: set[str] = set()
+CACHE_SECONDS = 3
+
+
+def _cached(name: str, load):
+    hit = _cache.get(name)
+    if hit and hit[0] > time.monotonic():
+        return hit[1]
+    value = load()
+    _cache[name] = (time.monotonic() + CACHE_SECONDS, value)
+    return value
+
+
+def _forget(name: str) -> None:
+    _cache.pop(name, None)
+
+
+def _ensure_seeded() -> None:
+    """Put the demo students, their rooms, and the course list in a new database once."""
+    url = db.url()
+    if url in _seeded:
+        return
+    _seeded.add(url)
+    if db.seed_once("profiles-v1"):
+        db.seed_profiles([deepcopy(_owner), *deepcopy(_others)])
+    if db.seed_once("courses-v1"):
+        for course in COURSES:
+            db.save_course(course)
+    if db.seed_once("rooms-v1"):
+        db.save_rooms(deepcopy(_rooms), set())
+
+
+def current_id() -> str:
+    """The signed-in account, or the demo owner outside a request."""
+    from app.scheduling.context import owner_id
+
+    return owner_id()
+
+
+def is_complete(profile: dict) -> bool:
+    """Matching only uses profiles that have a major and at least one course."""
+    return bool(profile.get("major") and profile.get("course_ids"))
+
+
+def seed_student_ids() -> list[str]:
+    """The demo students (not registered accounts), for seeding their calendars."""
+    return [person["id"] for person in _others]
+
+
+def blank_profile(user_id: str) -> dict:
+    """A new account's profile before it is filled in."""
+    from app import accounts
+
+    account = accounts.get(user_id) or {}
+    name = account.get("name") or "New student"
+    return {
+        "id": user_id,
+        "name": name,
+        "first_name": name.split()[0],
+        "email": account.get("email", ""),
+        "study_style": "any",
+        "study_styles": [],
+        "study_style_note": "",
+        "street_address": "",
+        "radius_meters": 1500,
+        "anchor": "home",
+        "anchor_lat": CAMPUS_LAT,
+        "anchor_lng": CAMPUS_LNG,
+        "group_size": 2,
+        "group_min": 2,
+        "group_max": 4,
+        "place_types": ["coffee", "library"],
+        "place_note": "",
+        "major": "",
+        "year": 1,
+        "course_ids": [],
+        "gender_self": "",
+        "gender_preference": [],
+        "under_18": False,
+    }
+
+
+def _all_profiles() -> list[dict]:
+    if not db.enabled():
+        return [deepcopy(_owner), *deepcopy(_others), *deepcopy(list(_profiles.values()))]
+    _ensure_seeded()
+    return deepcopy(_cached("profiles", db.all_profiles))
+
+
+def profile_of(user_id: str) -> dict | None:
+    if not db.enabled():
+        if user_id == OWNER_ID:
+            return deepcopy(_owner)
+        found = next((person for person in _others if person["id"] == user_id), None) or _profiles.get(user_id)
+        return deepcopy(found) if found else None
+    return next((profile for profile in _all_profiles() if profile["id"] == user_id), None)
+
+
 def owner() -> dict:
-    return deepcopy(_owner)
+    """The signed-in account's own profile, blank until they fill it in."""
+    user_id = current_id()
+    return profile_of(user_id) or blank_profile(user_id)
 
 
 def replace_owner(profile: dict) -> None:
-    _owner.clear()
-    _owner.update(profile)
+    user_id = current_id()
+    profile = {**profile, "id": user_id, "first_name": (profile.get("name") or "Student").split()[0]}
+    if db.enabled():
+        db.save_profile(user_id, profile)
+        _forget("profiles")
+    elif user_id == OWNER_ID:
+        _owner.clear()
+        _owner.update(profile)
+    else:
+        _profiles[user_id] = deepcopy(profile)
 
 
 def others() -> list[dict]:
-    return deepcopy(_others)
+    """Everyone but the signed-in account, with a finished profile."""
+    me = current_id()
+    return [profile for profile in _all_profiles() if profile["id"] != me and is_complete(profile)]
 
 
 def student_by_id(student_id: str) -> dict | None:
-    if student_id == OWNER_ID:
-        return owner()
-    for person in _others:
-        if person["id"] == student_id:
-            return deepcopy(person)
-    return None
+    return profile_of(student_id)
 
 
 def places() -> list[dict]:
@@ -615,6 +742,41 @@ def cache_ranking(key: str, ranking: dict) -> None:
     _room_rankings[key] = deepcopy(ranking)
 
 
+_room_lock = threading.RLock()
+_room_depth = 0
+
+
+def _synced_rooms(write: bool):
+    """In database mode, room functions work on a fresh copy and write it back.
+
+    Room functions call each other (joining can leave another room), so only the
+    outermost call loads and saves.
+    """
+    def decorate(function):
+        @wraps(function)
+        def wrapper(*args, **kwargs):
+            global _room_depth
+            if not db.enabled():
+                return function(*args, **kwargs)
+            with _room_lock:
+                outer = _room_depth == 0
+                if outer:
+                    _ensure_seeded()
+                    _rooms[:] = db.load_rooms()
+                    loaded = {room["id"] for room in _rooms}
+                _room_depth += 1
+                try:
+                    result = function(*args, **kwargs)
+                finally:
+                    _room_depth -= 1
+                if outer and write:
+                    db.save_rooms(_rooms, loaded)
+                return result
+        return wrapper
+    return decorate
+
+
+@_synced_rooms(write=False)
 def rooms() -> list[dict]:
     return deepcopy(_rooms)
 
@@ -630,6 +792,7 @@ def _overlaps(room: dict, starts_at: str, ends_at: str) -> bool:
     return room_start < end and room_end > start
 
 
+@_synced_rooms(write=False)
 def hosted_room(host_id: str, course_id: str, place_name: str, starts_at: str, ends_at: str) -> dict | None:
     """The room this person already opened for the same course, place, and time."""
     found = next(
@@ -646,6 +809,7 @@ def hosted_room(host_id: str, course_id: str, place_name: str, starts_at: str, e
     return deepcopy(found) if found else None
 
 
+@_synced_rooms(write=False)
 def holds_other_seat(user_id: str, starts_at: str, ends_at: str, course_id: str = "", place_name: str = "") -> bool:
     """True when this person already sits in a different room at this time."""
     for room in _rooms:
@@ -665,6 +829,7 @@ def holds_other_seat(user_id: str, starts_at: str, ends_at: str, course_id: str 
     return False
 
 
+@_synced_rooms(write=True)
 def leave_overlapping(user_id: str, starts_at: str, ends_at: str, keep_id: str) -> int:
     """One person, one room at a time. Other overlapping seats are given up."""
     left = 0
@@ -680,6 +845,7 @@ def leave_overlapping(user_id: str, starts_at: str, ends_at: str, keep_id: str) 
     return left
 
 
+@_synced_rooms(write=True)
 def create_room(
     host: dict,
     course_id: str,
@@ -704,7 +870,8 @@ def create_room(
             leave_overlapping(host["id"], room["starts_at"], room["ends_at"], room["id"])
             return deepcopy(room)
     room = {
-        "id": next_id("room"),
+        # Random, so ids stay unique once rooms outlive a server restart.
+        "id": f"room_{uuid4().hex[:12]}",
         "host_id": host["id"],
         "course_id": course_id,
         "course_code": course_code,
@@ -720,6 +887,7 @@ def create_room(
     return deepcopy(room)
 
 
+@_synced_rooms(write=True)
 def resize_hosted(user_id: str, course_id: str, place_name: str, starts_at: str, ends_at: str, capacity: int) -> None:
     """A sentence that asks for 4 people updates the room this host already opened."""
     capacity = max(2, min(5, capacity))
@@ -733,6 +901,7 @@ def resize_hosted(user_id: str, course_id: str, place_name: str, starts_at: str,
             room["capacity"] = max(len(room["members"]), capacity)
 
 
+@_synced_rooms(write=True)
 def update_room_time(room_id: str, user_id: str, starts_at: str, ends_at: str) -> str:
     """The host can move a room they opened. Joining someone else's room does not."""
     room = next((item for item in _rooms if item["id"] == room_id), None)
@@ -745,6 +914,7 @@ def update_room_time(room_id: str, user_id: str, starts_at: str, ends_at: str) -
     return "updated"
 
 
+@_synced_rooms(write=True)
 def update_room_settings(
     room_id: str,
     user_id: str,
@@ -772,6 +942,7 @@ def update_room_settings(
     return "updated"
 
 
+@_synced_rooms(write=True)
 def join_room(room_id: str, member: dict) -> str:
     room = next((item for item in _rooms if item["id"] == room_id), None)
     if room is None:
@@ -786,6 +957,7 @@ def join_room(room_id: str, member: dict) -> str:
     return "switched" if left else "joined"
 
 
+@_synced_rooms(write=True)
 def leave_room(room_id: str, user_id: str) -> str:
     room = next((item for item in _rooms if item["id"] == room_id), None)
     if room is None:

@@ -6,6 +6,9 @@
     <h1 class="title">Your profile</h1>
     <p class="lede">Tell us how you like to study. We use this to find study partners and places that suit you.</p>
   </div>
+  {% if not complete and not error %}
+  <div class="callout warn"><p>Finish your profile so we can match you with other students. Add your major, your courses, and your address.</p></div>
+  {% endif %}
   {% if error %}
   <div class="callout warn"><p>{{ error }}</p></div>
   {% endif %}

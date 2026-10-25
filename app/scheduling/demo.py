@@ -24,7 +24,7 @@ def demo_owner(request: Request) -> Actor:
 
 def fixture_records():
     from app.schedule_core import DAYS
-    users = [store.OWNER_ID, *(p["id"] for p in store.others())]
+    users = [store.OWNER_ID, *store.seed_student_ids()]
     records = []
     private_events = {u: [] for u in users}
     for user in users:

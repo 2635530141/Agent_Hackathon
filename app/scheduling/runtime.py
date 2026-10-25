@@ -19,8 +19,11 @@ class CalendarRuntime:
 def build_runtime(database_url=None):
     if os.getenv("STUDYMATE_CALENDAR_MODE", "synthetic") != "synthetic":
         raise RuntimeError("Team authentication is not wired; this host permits synthetic calendar data only")
+    from app import db
     default = (Path(__file__).resolve().parents[2] / "data" / "calendar-synthetic.db").as_posix()
-    repository = SQLiteScheduleRepository(database_url or os.getenv("STUDYMATE_CALENDAR_DB", f"sqlite+pysqlite:///{default}"))
+    # Schedules live with the rest of the user data in the cloud database when one is configured.
+    repository = SQLiteScheduleRepository(database_url or os.getenv("STUDYMATE_CALENDAR_DB")
+                                          or db.cloud_url() or f"sqlite+pysqlite:///{default}")
     repository.migrate()
     _, provider = seed_repository(repository)
     service = ScheduleService(repository, provider, TeamSessionGateway(), timezone_name=display_zone())

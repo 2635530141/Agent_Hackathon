@@ -10,3 +10,4 @@ cryptography>=44
 joserfc>=1.7,<2
 itsdangerous>=2.2
 pytest>=8
+psycopg[binary]>=3.2

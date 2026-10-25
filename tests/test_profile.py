@@ -338,7 +338,14 @@ def test_google_outage_is_a_clear_error(monkeypatch):
 def test_profile_page_links_radius_center_to_google_maps(client):
     body = client.get("/profile").text
     assert "https://www.google.com/maps/search/?api=1&amp;query=37.8668%2C-122.265" in body
-    assert "located with OpenStreetMap" in body
+
+
+def test_profile_page_is_written_for_students(client):
+    body = client.get("/profile").text
+    for internal in ("What a match sees", "Stephen owns", "OpenStreetMap", "public profile", 'id="match-view"'):
+        assert internal not in body
+    for section in ("School", "How you study", "Group and places", "Getting there", "About you"):
+        assert section in body
 
 
 # Study style choices

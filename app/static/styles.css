@@ -115,6 +115,10 @@ code {
   color: var(--accent-ink);
 }
 
+.narrow {
+  max-width: 720px;
+}
+
 .page {
   width: min(1080px, calc(100% - 32px));
   margin: 32px auto 64px;
